@@ -1,6 +1,9 @@
-const GEMINI_MODEL = "gemini-3.1-pro-preview";
-const GEMINI_URL = (key) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
+const getModel = () => {
+  const saved = localStorage.getItem("gemini_model") || "gemini-1.5-flash";
+  return saved.startsWith("gemini-") ? saved : "gemini-1.5-flash";
+};
+const GEMINI_URL = (key, model) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
 export async function runTests(code, tests, apiKey) {
   if (!apiKey || !apiKey.trim()) {
@@ -37,7 +40,8 @@ Raspunde DOAR cu JSON valid, fara backticks:
 
   let response;
   try {
-    response = await fetch(GEMINI_URL(apiKey), {
+    const model = getModel();
+    response = await fetch(GEMINI_URL(apiKey, model), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -312,3 +312,145 @@
 
 .cat-opt-icon { font-size: 18px; flex-shrink: 0; margin-top: 2px; }
 
+
+/* ─── Gen rows layout ──────────────────────────────────────────────────────── */
+
+.gen-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gen-row-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text3);
+}
+
+/* ─── Difficulty pills ──────────────────────────────────────────────────────── */
+
+.diff-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.diff-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+  flex: 1;
+  min-width: 140px;
+}
+
+.diff-pill:hover {
+  border-color: var(--text3);
+  background: var(--bg3);
+}
+
+.diff-pill-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.diff-pill-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diff-pill-label {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+  line-height: 1;
+}
+
+.diff-pill-desc {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.3;
+}
+
+/* Active states per difficulty */
+.diff-pill--easy.active {
+  border-color: rgba(0, 255, 136, 0.5);
+  background: rgba(0, 255, 136, 0.07);
+  box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.2) inset;
+}
+.diff-pill--easy.active .diff-pill-label { color: var(--green); }
+
+.diff-pill--medium.active {
+  border-color: rgba(255, 215, 0, 0.5);
+  background: rgba(255, 215, 0, 0.07);
+  box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.2) inset;
+}
+.diff-pill--medium.active .diff-pill-label { color: var(--yellow); }
+
+.diff-pill--hard.active {
+  border-color: rgba(255, 51, 102, 0.5);
+  background: rgba(255, 51, 102, 0.07);
+  box-shadow: 0 0 0 1px rgba(255, 51, 102, 0.2) inset;
+}
+.diff-pill--hard.active .diff-pill-label { color: var(--red); }
+
+/* ─── Gen footer row ─────────────────────────────────────────────────────── */
+
+.gen-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.gen-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.gen-summary-item { color: var(--text2); }
+.gen-summary-sep { color: var(--border); }
+.gen-summary-note { color: var(--text3); }
+
+.gen-summary-diff.diff-easy { color: var(--green); }
+.gen-summary-diff.diff-medium { color: var(--yellow); }
+.gen-summary-diff.diff-hard { color: var(--red); }
+
+/* ─── Problem card difficulty badges ────────────────────────────────────── */
+
+.meta-cat {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 7px;
+}
+
+.meta-diff {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.meta-diff.diff-easy { color: var(--green); }
+.meta-diff.diff-medium { color: var(--yellow); }
+.meta-diff.diff-hard { color: var(--red); }

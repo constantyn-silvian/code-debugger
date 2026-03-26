@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from "react";
-import { getProblems, generateNewProblem, deleteProblem } from "../utils/storage";
+import { getProblems, generateNewProblem, deleteProblem, DIFFICULTIES } from "../utils/storage";
 import { PBINFO_CATEGORIES } from "../utils/categories";
 import "./ProblemsPage.css";
+
+const DIFF_ORDER = ["easy", "medium", "hard"];
 
 export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey }) {
   const [problems, setProblems] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(PBINFO_CATEGORIES[0].id);
+  const [selectedDifficulty, setSelectedDifficulty] = useState("easy");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [genStatus, setGenStatus] = useState("");
   const dropdownRef = useRef(null);
@@ -16,7 +19,6 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
     setProblems(getProblems());
   }, []);
 
-  // Close dropdown on click outside
   useEffect(() => {
     const handler = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -37,11 +39,11 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
     setGenerating(true);
     setGenError("");
     setShowCategoryPicker(false);
-    setGenStatus("Se genereaza problema...");
+    setGenStatus("Se pregătește...");
     try {
       const cat = PBINFO_CATEGORIES.find(c => c.id === selectedCategory);
       const existing = getProblems().map(p => p.title);
-      await generateNewProblem(geminiKey, cat, existing, setGenStatus);
+      await generateNewProblem(geminiKey, cat, selectedDifficulty, existing, setGenStatus);
       setProblems(getProblems());
       setGenStatus("");
     } catch (e) {
@@ -52,13 +54,14 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
   };
 
   const handleDelete = (id) => {
-    if (window.confirm("Stergi aceasta problema?")) {
+    if (window.confirm("Ștergi această problemă?")) {
       deleteProblem(id);
       refresh();
     }
   };
 
   const cat = PBINFO_CATEGORIES.find(c => c.id === selectedCategory);
+  const diff = DIFFICULTIES[selectedDifficulty];
 
   return (
     <div className="problems-page">
@@ -85,14 +88,16 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
           <div className="gen-panel-inner">
             <div className="gen-panel-title">
               <span className="gen-icon">⚡</span>
-              Genereaza Problema Noua
+              Generează Problemă Nouă
             </div>
             <p className="gen-desc">
-              Selecteaza o categorie PBInfo, AI-ul genereaza o problema originala cu sursa C++ corecta de 100p,
-              apoi injecteaza bug-uri subtile pe care trebuie sa le gasesti.
+              Alege categoria și dificultatea. Se face <strong>un singur request</strong> care generează
+              cerința, sursa corectă și bug-urile — totul dintr-o dată.
             </p>
 
-            <div className="gen-controls">
+            {/* Row 1: Category */}
+            <div className="gen-row">
+              <div className="gen-row-label">Categorie</div>
               <div className="cat-dropdown-wrapper" ref={dropdownRef}>
                 <div
                   className="category-select"
@@ -121,6 +126,45 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Row 2: Difficulty pills */}
+            <div className="gen-row">
+              <div className="gen-row-label">Dificultate</div>
+              <div className="diff-pills">
+                {DIFF_ORDER.map(id => {
+                  const d = DIFFICULTIES[id];
+                  return (
+                    <button
+                      key={id}
+                      className={"diff-pill diff-pill--" + id + (selectedDifficulty === id ? " active" : "")}
+                      onClick={() => setSelectedDifficulty(id)}
+                      disabled={generating}
+                    >
+                      <span className="diff-pill-icon">{d.icon}</span>
+                      <div className="diff-pill-body">
+                        <span className="diff-pill-label">{d.label}</span>
+                        <span className="diff-pill-desc">{d.description}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Selected summary + Generate button */}
+            <div className="gen-footer-row">
+              <div className="gen-summary">
+                <span className="gen-summary-item">
+                  {cat?.icon} {cat?.name}
+                </span>
+                <span className="gen-summary-sep">·</span>
+                <span className={"gen-summary-diff diff-" + selectedDifficulty}>
+                  {diff?.icon} {diff?.label}
+                </span>
+                <span className="gen-summary-sep">·</span>
+                <span className="gen-summary-note">{diff?.bugCount} bug-uri · {diff?.codeLines} linii</span>
+              </div>
 
               <button
                 className="btn btn-primary"
@@ -128,9 +172,9 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
                 disabled={generating}
               >
                 {generating ? (
-                  <><span className="spinner" style={{width:14,height:14,flexShrink:0}} /> {genStatus || "Se genereaza..."}</>
+                  <><span className="spinner" style={{width:14,height:14,flexShrink:0}} /> {genStatus || "Se generează..."}</>
                 ) : (
-                  <><span>⚡</span> Genereaza</>
+                  <><span>⚡</span> Generează</>
                 )}
               </button>
             </div>
@@ -145,8 +189,8 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
         {problems.length === 0 ? (
           <div className="problems-empty">
             <div className="empty-icon">{"{ }"}</div>
-            <div className="empty-title">Nicio problema inca</div>
-            <div className="empty-desc">Genereaza prima problema folosind panoul de sus.</div>
+            <div className="empty-title">Nicio problemă încă</div>
+            <div className="empty-desc">Generează prima problemă folosind panoul de sus.</div>
           </div>
         ) : (
           <div className="problems-list">
@@ -157,12 +201,20 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
                   <div>
                     <div className="problem-card-title">{p.title}</div>
                     <div className="problem-card-meta">
-                      <span className="tag tag-easy" style={{fontSize:'10px'}}>{p.category}</span>
+                      <span className="meta-cat">{p.category}</span>
+                      {p.difficulty && (
+                        <>
+                          <span className="meta-sep">·</span>
+                          <span className={"meta-diff diff-" + p.difficulty}>
+                            {DIFFICULTIES[p.difficulty]?.icon} {DIFFICULTIES[p.difficulty]?.label}
+                          </span>
+                        </>
+                      )}
                       <span className="meta-sep">·</span>
                       <span className="meta-date">{new Date(p.createdAt).toLocaleDateString("ro-RO")}</span>
                       <span className="meta-sep">·</span>
                       <span className={"meta-status " + (p.solved ? "solved" : "unsolved")}>
-                        {p.solved ? "✓ Rezolvata" : "○ Nerezolvata"}
+                        {p.solved ? "✓ Rezolvată" : "○ Nerezolvată"}
                       </span>
                     </div>
                   </div>
