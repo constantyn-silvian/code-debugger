@@ -350,48 +350,9 @@
   gap: 8px;
 }
 
-.editor-wrapper {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  position: relative;
-}
 
-.line-numbers {
-  padding: 16px 0;
-  background: var(--bg2);
-  border-right: 1px solid var(--border);
-  user-select: none;
-  flex-shrink: 0;
-  overflow: hidden;
-  min-width: 48px;
-}
 
-.line-num {
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text3);
-  text-align: right;
-  padding: 0 12px;
-}
 
-.code-editor {
-  flex: 1;
-  padding: 16px;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.6;
-  resize: none;
-  overflow-y: auto;
-  overflow-x: auto;
-  tab-size: 2;
-  white-space: pre;
-}
 
 .editor-footer {
   padding: 12px 16px;
@@ -425,3 +386,67 @@
   gap: 8px;
   margin-left: auto;
 }
+
+/* ─── Syntax highlight overlay editor ──────────────────────────────────────── */
+
+.editor-wrapper {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Shared font + sizing for both layers */
+.hl-layer,
+.code-editor {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+  tab-size: 2;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* Highlight layer: sits below the textarea */
+.hl-layer {
+  position: absolute;
+  inset: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  pointer-events: none;
+  color: transparent; /* text itself transparent — only spans show color */
+  background: transparent;
+  z-index: 1;
+}
+
+/* Textarea: transparent bg + text, sits on top */
+.code-editor {
+  position: absolute;
+  inset: 0;
+  padding: 14px 16px;
+  background: transparent;
+  color: transparent;      /* hide native text — highlight layer shows it */
+  caret-color: var(--accent); /* cursor still visible */
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: auto;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  -webkit-text-fill-color: transparent; /* Safari fix */
+}
+
+/* Line wrapper */
+.hl-line {
+  min-height: 1.65em;
+}
+
+/* Token colors — C++ */
+.hl-kw     { color: #c792ea; }          /* keywords */
+.hl-pp     { color: #82aaff; }          /* #include #define */
+.hl-string { color: #c3e88d; }          /* "strings" 'chars' */
+.hl-number { color: #f78c6c; }          /* numbers */
+.hl-comment{ color: #546e7a; font-style: italic; } /* // comments */
+.hl-op     { color: #89ddff; }          /* operators () {} ; */
+.hl-id     { color: #eeffff; }          /* identifiers */

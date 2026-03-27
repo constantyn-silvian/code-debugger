@@ -1,46 +1,73 @@
 const getModel = () => {
-  const saved = localStorage.getItem("gemini_model") || "gemini-1.5-flash";
-  return saved.startsWith("gemini-") ? saved : "gemini-1.5-flash";
+  const saved = localStorage.getItem("gemini_model") || "gemini-2.5-flash";
+  return saved.startsWith("gemini-") ? saved : "gemini-2.5-flash";
 };
 const GEMINI_URL = (key, model) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
-export async function runTests(code, tests, apiKey) {
-  if (!apiKey || !apiKey.trim()) {
-    throw new Error("Token Gemini lipsa. Adauga-l in Settings.");
-  }
-  if (!tests || tests.length === 0) {
-    throw new Error("Niciun test disponibil pentru aceasta problema.");
-  }
+// La Submit, Gemini:
+// 1. Genereaza 5 teste (edge cases incluse) pentru problema
+// 2. Simuleaza executia codului userului pe fiecare test
+// 3. Returneaza rezultatele
+// Un singur request - economie maxima de tokeni
+export async function runTests(problem, userCode, apiKey) {
+  if (!apiKey?.trim()) throw new Error("Token Gemini lipsă. Adaugă-l în Settings.");
+  if (!userCode?.trim()) throw new Error("Codul este gol.");
 
-  const testList = tests
-    .map((t, i) => `Test ${i + 1}:\nInput: ${t.input}\nOutput asteptat: ${t.expected}`)
-    .join("\n\n");
+  const model = getModel();
 
-  const prompt = `Esti un interpret C++ precis. Executa mental urmatorul cod pentru fiecare test si returneaza output-ul exact.
+  const prompt =
+`Esti un judge automat pentru C++. Ai urmatoarea problema si codul unui student.
 
-Cod C++:
-${code}
+PROBLEMA: ${problem.title}
+Cerinta: ${problem.statement}
+Date intrare: ${problem.inputSpec}
+Date iesire: ${problem.outputSpec}
+Restrictii: ${problem.constraints}
+${problem.examples?.length ? `Exemple:\n${problem.examples.map(e => `Input: ${e.input}\nOutput: ${e.output}`).join("\n")}` : ""}
 
-${testList}
+COD STUDENT:
+${userCode}
 
-Reguli:
-- Simuleaza exact cum ar rula g++ (tipuri, overflow, bucle, conditii)
-- Pentru fiecare test returneaza exact ce printeaza programul
-- Daca e Runtime Error scrie "RE", daca e bucla infinita scrie "TLE"
-- Compara output-ul cu cel asteptat (ignora spatii/newline la final)
+Sarcina ta:
+1. Genereaza 5 teste diverse (incluzand edge cases: n=1, valori la limita, valori negative daca au sens)
+2. Pentru fiecare test, simuleaza mental executia codului de mai sus (nu a solutiei corecte!) si determina ce ar printa
+3. Compara cu outputul corect al problemei
 
-Raspunde DOAR cu JSON valid, fara backticks:
-{
-  "results": [
-    {"test": 1, "actual": "output exact", "passed": true},
-    {"test": 2, "actual": "output exact", "passed": false}
-  ]
-}`;
+Raspunde EXACT in formatul urmator (pastreaza tag-urile):
+<TEST_1>
+<IN>datele de intrare</IN>
+<EXPECTED>outputul corect al problemei</EXPECTED>
+<GOT>ce ar printa codul studentului</GOT>
+<PASS>true sau false</PASS>
+</TEST_1>
+<TEST_2>
+<IN>datele de intrare</IN>
+<EXPECTED>outputul corect</EXPECTED>
+<GOT>ce ar printa codul studentului</GOT>
+<PASS>true sau false</PASS>
+</TEST_2>
+<TEST_3>
+<IN>datele de intrare</IN>
+<EXPECTED>outputul corect</EXPECTED>
+<GOT>ce ar printa codul studentului</GOT>
+<PASS>true sau false</PASS>
+</TEST_3>
+<TEST_4>
+<IN>datele de intrare</IN>
+<EXPECTED>outputul corect</EXPECTED>
+<GOT>ce ar printa codul studentului</GOT>
+<PASS>true sau false</PASS>
+</TEST_4>
+<TEST_5>
+<IN>datele de intrare</IN>
+<EXPECTED>outputul corect</EXPECTED>
+<GOT>ce ar printa codul studentului</GOT>
+<PASS>true sau false</PASS>
+</TEST_5>`;
 
   let response;
   try {
-    const model = getModel();
     response = await fetch(GEMINI_URL(apiKey, model), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -49,43 +76,39 @@ Raspunde DOAR cu JSON valid, fara backticks:
         generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
       }),
     });
-  } catch (netErr) {
-    throw new Error("Eroare retea la evaluare: " + netErr.message);
-  }
+  } catch (e) { throw new Error("Eroare rețea: " + e.message); }
 
   if (!response.ok) {
     let body = {};
     try { body = await response.json(); } catch {}
     const msg = body?.error?.message || `HTTP ${response.status}`;
-    throw new Error("Gemini evaluator error: " + msg);
+    if (response.status === 429) throw new Error("Rate limit la evaluare. Așteaptă câteva secunde.");
+    throw new Error("Eroare evaluare: " + msg);
   }
 
   const data = await response.json();
-  let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  text = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  if (!raw) throw new Error("Răspuns gol de la evaluator.");
 
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) try { parsed = JSON.parse(m[0]); } catch {}
-    if (!parsed) throw new Error("Nu s-a putut parsa raspunsul evaluatorului.");
+  // Parsare rezultate
+  const results = [];
+  for (let i = 1; i <= 5; i++) {
+    const block = raw.match(new RegExp(`<TEST_${i}>([\\s\\S]*?)<\\/TEST_${i}>`, "i"));
+    if (!block) continue;
+    const b = block[1];
+    const t = (name) => {
+      const m = b.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`, "i"));
+      return m ? m[1].trim() : "";
+    };
+    const passStr = t("PASS").toLowerCase();
+    results.push({
+      input:    t("IN"),
+      expected: t("EXPECTED"),
+      actual:   t("GOT"),
+      passed:   passStr === "true",
+    });
   }
 
-  return tests.map((t, i) => {
-    const r = parsed.results?.find((x) => x.test === i + 1) || {};
-    const actual = String(r.actual ?? "").trim();
-    const expected = String(t.expected ?? "").trim();
-    const passed =
-      actual === expected ||
-      actual.replace(/\s+/g, " ") === expected.replace(/\s+/g, " ");
-
-    return {
-      input: t.input,
-      expected: t.expected,
-      actual: r.actual !== undefined ? String(r.actual) : "(no output)",
-      passed,
-    };
-  });
+  if (!results.length) throw new Error("Evaluatorul nu a returnat rezultate valide. Încearcă din nou.");
+  return results;
 }
