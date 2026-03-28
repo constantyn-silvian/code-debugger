@@ -5,113 +5,145 @@ const getModel = () => {
 const GEMINI_URL = (key, model) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
-// Verifica codul userului pe testele salvate (generate o singura data la creare)
-// Daca nu exista teste salvate, le genereaza acum si le salveaza
-export async function runTests(problem, userCode, apiKey, onSaveTests) {
-  if (!apiKey?.trim()) throw new Error("Token Gemini lipsă. Adaugă-l în Settings.");
-  if (!userCode?.trim()) throw new Error("Codul este gol.");
-
+async function callGemini(apiKey, prompt, maxTokens = 2048) {
   const model = getModel();
-
-  // Daca avem teste salvate, le folosim direct — fara request extra
-  if (problem.tests && problem.tests.length > 0) {
-    return evaluateOnSavedTests(problem, userCode, apiKey, model);
-  }
-
-  // Fallback: genereaza teste acum si salveaza-le
-  const tests = await generateTests(problem, apiKey, model);
-  if (onSaveTests) onSaveTests(tests); // salveaza in problema
-  return evaluateOnSavedTests({ ...problem, tests }, userCode, apiKey, model);
-}
-
-// Evalueaza codul pe testele salvate — un singur request
-async function evaluateOnSavedTests(problem, userCode, apiKey, model) {
-  const testsText = problem.tests.map((t, i) =>
-    `Test ${i+1}: INPUT=${JSON.stringify(t.input)} EXPECTED=${JSON.stringify(t.expected)}`
-  ).join("\n");
-
-  const prompt =
-`Esti un judge C++. Simuleaza mental executia codului de mai jos si determina outputul pentru fiecare test.
-Problema: ${problem.title} — ${problem.statement?.slice(0, 200)}
-
-COD:
-${userCode}
-
-TESTE:
-${testsText}
-
-Raspunde EXACT in formatul (tag-uri obligatorii pentru fiecare test):
-<R1><GOT>ce ar printa programul</GOT><PASS>true/false</PASS></R1>
-<R2><GOT>ce ar printa programul</GOT><PASS>true/false</PASS></R2>
-<R3><GOT>ce ar printa programul</GOT><PASS>true/false</PASS></R3>
-<R4><GOT>ce ar printa programul</GOT><PASS>true/false</PASS></R4>
-<R5><GOT>ce ar printa programul</GOT><PASS>true/false</PASS></R5>`;
-
-  let response;
-  try {
-    response = await fetch(GEMINI_URL(apiKey, model), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-      }),
-    });
-  } catch (e) { throw new Error("Eroare rețea evaluare: " + e.message); }
-
-  if (!response.ok) {
-    let body = {};
-    try { body = await response.json(); } catch {}
-    const msg = body?.error?.message || `HTTP ${response.status}`;
-    if (response.status === 429) throw new Error("Rate limit la evaluare. Așteaptă câteva secunde.");
-    throw new Error("Eroare evaluare: " + msg);
-  }
-
-  const data = await response.json();
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-  const results = problem.tests.map((t, i) => {
-    const n = i + 1;
-    const block = raw.match(new RegExp(`<R${n}>([\\s\\S]*?)<\\/R${n}>`, "i"));
-    if (!block) return { input: t.input, expected: t.expected, actual: "?", passed: false };
-    const got  = (block[1].match(/<GOT>([\s\S]*?)<\/GOT>/i)?.[1] || "").trim();
-    const pass = block[1].match(/<PASS>([\s\S]*?)<\/PASS>/i)?.[1]?.trim().toLowerCase() === "true";
-    return { input: t.input, expected: t.expected, actual: got, passed: pass };
-  });
-
-  if (!results.length) throw new Error("Evaluatorul nu a returnat rezultate. Încearcă din nou.");
-  return results;
-}
-
-async function generateTests(problem, apiKey, model) {
-  const prompt =
-`Genereaza 5 teste diverse pentru problema C++: ${problem.title}.
-Cerinta: ${problem.statement?.slice(0, 300)}
-Intrare: ${problem.inputSpec} Iesire: ${problem.outputSpec}
-Include: valori mici, valori la limita, edge cases.
-<T1_IN>in1</T1_IN><T1_OUT>out1</T1_OUT>
-<T2_IN>in2</T2_IN><T2_OUT>out2</T2_OUT>
-<T3_IN>in3</T3_IN><T3_OUT>out3</T3_OUT>
-<T4_IN>in4</T4_IN><T4_OUT>out4</T4_OUT>
-<T5_IN>in5</T5_IN><T5_OUT>out5</T5_OUT>`;
-
   const resp = await fetch(GEMINI_URL(apiKey, model), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+      generationConfig: { temperature: 0.0, maxOutputTokens: maxTokens },
     }),
   });
-  if (!resp.ok) throw new Error("Nu s-au putut genera teste.");
+  if (!resp.ok) {
+    let body = {};
+    try { body = await resp.json(); } catch {}
+    const msg = body?.error?.message || `HTTP ${resp.status}`;
+    if (resp.status === 429) throw new Error("Rate limit. Încearcă din nou în câteva secunde.");
+    throw new Error("Gemini error: " + msg);
+  }
   const data = await resp.json();
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
 
+function tag(raw, name) {
+  const m = raw.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`, "i"));
+  return m ? m[1].trim() : "";
+}
+
+function normalize(s) {
+  return (s || "").split("\n").map(l => l.trimEnd()).join("\n").trim();
+}
+
+// ─── Evaluare cod pe teste ─────────────────────────────────────────────────────
+// Strategia: dam Gemini SURSA CORECTA + testele + codul userului
+// Gemini calculeaza expected rulând sursa corecta mental (cod simplu, max 30 linii)
+// si compara cu ce produce codul userului
+// Asa expected-ul e calculat din sursa corecta, nu inventat
+
+export async function runTests(problem, userCode, apiKey, onSaveTests) {
+  if (!apiKey?.trim()) throw new Error("Token Gemini lipsă. Adaugă-l în Settings.");
+  if (!userCode?.trim()) throw new Error("Codul este gol.");
+
+  let tests = problem.tests || [];
+
+  // Daca nu avem teste salvate, genereaza-le acum cu expected calculat din sursa corecta
+  if (!tests.length) {
+    tests = await generateAndVerifyTests(problem, apiKey);
+    if (onSaveTests) onSaveTests(tests);
+  }
+
+  if (!tests.length) throw new Error("Nu s-au putut genera teste. Încearcă din nou.");
+
+  // Evalueaza codul userului pe teste — un singur request cu toate testele
+  return evaluateUserCode(problem, userCode, tests, apiKey);
+}
+
+// Genereaza teste SI calculeaza expected rulând sursa corecta
+// Sursa corecta vine din problema — e generata de Gemini si e corecta
+async function generateAndVerifyTests(problem, apiKey) {
+  const prompt =
+`Esti un profesor de informatica care creaza teste pentru o problema C++.
+
+PROBLEMA: ${problem.title}
+Cerinta: ${problem.statement?.slice(0, 300)}
+Intrare: ${problem.inputSpec}
+Iesire: ${problem.outputSpec}
+Restrictii: ${problem.constraints}
+
+SURSA C++ CORECTA (ruleaza-o mental pentru a calcula outputul exact):
+${problem.correctCode}
+
+Genereaza 5 teste diverse. Pentru fiecare test:
+1. Alege un input valid conform restrictiilor
+2. Ruleaza mental SURSA C++ CORECTA de mai sus pe acel input
+3. Scrie outputul exact pe care il produce sursa corecta
+
+Teste diverse: valori mici, n=1, valori la limita, valori negative daca are sens, edge case.
+
+Raspunde DOAR cu tag-urile (nimic altceva):
+<T1_IN>input test 1</T1_IN>
+<T1_OUT>output exact al sursei corecte pentru input 1</T1_OUT>
+<T2_IN>input test 2</T2_IN>
+<T2_OUT>output exact al sursei corecte pentru input 2</T2_OUT>
+<T3_IN>input test 3</T3_IN>
+<T3_OUT>output exact al sursei corecte pentru input 3</T3_OUT>
+<T4_IN>input test 4</T4_IN>
+<T4_OUT>output exact al sursei corecte pentru input 4</T4_OUT>
+<T5_IN>input test 5</T5_IN>
+<T5_OUT>output exact al sursei corecte pentru input 5</T5_OUT>`;
+
+  const raw = await callGemini(apiKey, prompt, 2048);
   const tests = [];
-  const t = (name) => { const m = raw.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`, "i")); return m ? m[1].trim() : ""; };
   for (let i = 1; i <= 5; i++) {
-    const inp = t(`T${i}_IN`), out = t(`T${i}_OUT`);
+    const inp = tag(raw, `T${i}_IN`);
+    const out = tag(raw, `T${i}_OUT`);
     if (inp && out) tests.push({ input: inp, expected: out });
   }
   return tests;
+}
+
+// Evalueaza codul userului: Gemini ruleaza mental AMBELE coduri si compara
+async function evaluateUserCode(problem, userCode, tests, apiKey) {
+  const testsBlock = tests.map((t, i) =>
+    `<TEST id="${i+1}">\n<INPUT>${t.input}</INPUT>\n<EXPECTED>${t.expected}</EXPECTED>\n</TEST>`
+  ).join("\n");
+
+  const prompt =
+`Esti un interpret C++ precis. Ai doua surse si trebuie sa determini daca produc acelasi output.
+
+SURSA CORECTA (referinta — outputul ei e cel asteptat):
+${(problem.correctCode || "").slice(0, 1500)}
+
+CODUL STUDENTULUI (de evaluat):
+${userCode.slice(0, 1500)}
+
+TESTE (inputul si outputul asteptat calculat din sursa corecta):
+${testsBlock}
+
+Pentru fiecare test, executa mental CODUL STUDENTULUI cu inputul dat si compara cu EXPECTED.
+Fii foarte precis: verifica fiecare variabila, fiecare bucla, fiecare conditie din codul studentului.
+
+Raspunde EXACT in formatul (nimic altceva):
+<R1><GOT>output exact al codului studentului</GOT><PASS>true</PASS></R1>
+<R2><GOT>output exact al codului studentului</GOT><PASS>false</PASS></R2>
+...etc pentru fiecare test`;
+
+  const raw = await callGemini(apiKey, prompt, 2048);
+
+  const results = tests.map((t, i) => {
+    const n = i + 1;
+    const block = raw.match(new RegExp(`<R${n}>([\\s\\S]*?)<\\/R${n}>`, "i"));
+    if (!block) return { input: t.input, expected: t.expected, actual: "?", passed: false };
+    const got  = tag(block[1], "GOT");
+    const pass = tag(block[1], "PASS").toLowerCase() === "true";
+    // Dubla verificare: compara si noi textual
+    const normGot = normalize(got);
+    const normExp = normalize(t.expected);
+    const actuallyPassed = pass || normGot === normExp;
+    return { input: t.input, expected: t.expected, actual: got || "?", passed: actuallyPassed };
+  });
+
+  if (!results.length) throw new Error("Evaluatorul nu a returnat rezultate. Încearcă din nou.");
+  return results;
 }

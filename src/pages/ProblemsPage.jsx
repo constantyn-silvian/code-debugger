@@ -187,7 +187,7 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
                   {diff?.icon} {diff?.label}
                 </span>
                 <span className="gen-summary-sep">·</span>
-                <span className="gen-summary-note">{diff?.bugCount} bug-uri · {diff?.codeLines} linii</span>
+                <span className="gen-summary-note">{diff?.taskCount} taskuri · {diff?.codeLines} linii</span>
               </div>
 
               <button

@@ -5,10 +5,7 @@ const getModel = () => {
 const GEMINI_URL = (key, model) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
-// maxOutputTokens in functie de dificultate
-const MAX_TOKENS = { easy: 8192, medium: 8192, hard: 8192 };
-
-async function callGemini(apiKey, prompt, temperature = 0.5, maxTokens = 4096) {
+async function callGemini(apiKey, prompt, temperature = 0.5) {
   const model = getModel();
   let response;
   try {
@@ -17,7 +14,7 @@ async function callGemini(apiKey, prompt, temperature = 0.5, maxTokens = 4096) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature, maxOutputTokens: maxTokens },
+        generationConfig: { temperature, maxOutputTokens: 8192 },
       }),
     });
   } catch (e) { throw new Error("Eroare rețea: " + e.message); }
@@ -40,28 +37,20 @@ async function callGemini(apiKey, prompt, temperature = 0.5, maxTokens = 4096) {
   return text;
 }
 
-// Extrage cod C++ din raspuns — incearca mai multe strategii
 function extractCode(raw) {
-  // 1. Markeri @@CODE_START@@ / @@CODE_END@@
   const si = raw.indexOf("@@CODE_START@@");
   const ei = raw.indexOf("@@CODE_END@@");
   if (si !== -1 && ei > si) {
     const c = raw.slice(si + 14, ei).trim();
-    if (c.includes("main")) return c;
+    if (c.includes("main") || c.includes("int ")) return c;
   }
-  // 2. Markdown fences ```cpp sau ```
   const fence = raw.match(/```(?:cpp|c\+\+)?\s*\n([\s\S]*?)```/i);
-  if (fence && fence[1].includes("main")) return fence[1].trim();
-  // 3. De la primul #include pana la sfarsit
+  if (fence) return fence[1].trim();
   const idx = raw.indexOf("#include");
-  if (idx !== -1) {
-    const c = raw.slice(idx).trim();
-    if (c.includes("main")) return c;
-  }
+  if (idx !== -1) return raw.slice(idx).trim();
   return "";
 }
 
-// Tag simplu (fara cod inauntru)
 function tag(raw, name) {
   const m = raw.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`, "i"));
   return m ? m[1].trim() : "";
@@ -84,119 +73,233 @@ export function deleteProblem(id) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(getProblems().filter(p => p.id !== id)));
 }
 
-// ─── Difficulty ───────────────────────────────────────────────────────────────
+// ─── Config per dificultate si tip ────────────────────────────────────────────
 export const DIFFICULTIES = {
-  easy:   { id: "easy",   label: "Ușor",  icon: "🟢", description: "Algoritm simplu, max 20 linii",       bugCount: 2, codeLines: "10-20" },
-  medium: { id: "medium", label: "Mediu", icon: "🟡", description: "Logică mai complexă, vectori/matrice", bugCount: 3, codeLines: "20-40" },
-  hard:   { id: "hard",   label: "Greu",  icon: "🔴", description: "DP, grafuri, recursivitate",           bugCount: 4, codeLines: "40-70" },
+  easy:   { id: "easy",   label: "Ușor",  icon: "🟢", description: "2-3 taskuri simple, evidente",         taskCount: "2-3", codeLines: "15-25" },
+  medium: { id: "medium", label: "Mediu", icon: "🟡", description: "4-5 taskuri intermediare, edge cases",  taskCount: "4-5", codeLines: "30-50" },
+  hard:   { id: "hard",   label: "Greu",  icon: "🔴", description: "5+ taskuri dificile, algoritmi avansați", taskCount: "5+",  codeLines: "50-90" },
 };
 
-const DIFF_CTX = {
-  easy:   { hint: "simpla O(n): suma, maxim, palindrom, cifre",  bugs: "off-by-one SI initializare gresita" },
-  medium: { hint: "medie O(n^2): matrice, siruri, prime",         bugs: "off-by-one, operator gresit (+/-), conditie inversa" },
-  hard:   { hint: "grea: DP sau BFS/DFS sau recursivitate",       bugs: "off-by-one, int vs long long, conditie DP/DFS gresita, caz de baza gresit" },
+// Specificatii detaliate per (tip, dificultate) — ce si cat genereaza Gemini
+const SPEC = {
+  // ── DEBUG: bug-uri de gasit si reparat ────────────────────────────────────
+  debug: {
+    easy: {
+      algo: "simpla O(n): suma elemente, maxim/minim, numara cifre, palindrom simplu",
+      codeLen: "15-25 linii, o singura functie main",
+      bugs: `Adauga exact 2 bug-uri SIMPLE si EVIDENTE — vizibile dupa 1-2 minute:
+1. Off-by-one clar: ex i=1 in loc de i=0, sau i<n in loc de i<=n
+2. Initializare gresita evidenta: ex s=1 in loc de s=0, maxi=-1 in loc de 0
+Studentul e incepator. Bug-urile nu trebuie sa fie ascunse.`,
+      testNote: "n=1, n=0 daca are sens, valori mici pozitive, un test cu toate elementele egale",
+    },
+    medium: {
+      algo: "medie O(n^2): matrice, siruri, numere prime, interclasare, ciurul lui Eratostene",
+      codeLen: "25-45 linii, poate include o functie auxiliara",
+      bugs: `Adauga exact 4 bug-uri de dificultate MEDIE — necesita 5-15 minute:
+1. Off-by-one subtil intr-o bucla imbricate (ex j<n in loc de j<=n)
+2. Operator logic gresit (ex && in loc de ||, sau & in loc de &&)
+3. Conditie inversa intr-un if (ex a[i]>maxi in loc de a[i]<mini)
+4. Calcul gresit: ex inmultire in loc de adunare, sau impartire gresita
+Studentul e intermediar. Bug-urile apar la edge cases sau valori limita.`,
+      testNote: "n=1, valori negative, valori la limita superioara, array sortat crescator si descrescator",
+    },
+    hard: {
+      algo: "dificila: DP (rucsac, LCS, LIS), BFS/DFS pe matrice sau graf, recursivitate cu memoizare",
+      codeLen: "45-70 linii, multiple functii",
+      bugs: `Adauga exact 5 bug-uri DIFICILE — necesita analiza profunda a algoritmului:
+1. Caz de baza gresit in DP sau recursie (ex dp[0]=1 in loc de dp[0]=0)
+2. int in loc de long long pentru sume sau produse mari
+3. Conditie BFS/DFS gresita (ex vizitare duplicata, sau directie de vecin lipsa)
+4. Index off-by-one intr-o structura 2D (ex dp[i][j-1] in loc de dp[i-1][j])
+5. Initializare gresita a unui vector/matrice (ex fill cu 0 in loc de INF sau invers)
+Studentul e avansat. Bug-urile sunt in logica algoritmului, nu sintaxa.`,
+      testNote: "n=1, n la limita maxima, caz fara solutie, toate elementele egale, caz cu solutie unica",
+    },
+  },
+
+  // ── COMPLETEAZĂ: parti de cod lipsa, studentul le scrie ───────────────────
+  complete: {
+    easy: {
+      algo: "simpla O(n): suma, maxim, palindrom, cifre",
+      codeLen: "15-25 linii",
+      todoSpec: `Lasa 2-3 locuri TODO simple si independente:
+- corpul buclei principale (ex: logica de acumulare sau comparatie)
+- calculul rezultatului final
+Citirea datelor si structura generala sunt scrise. Studentul completeaza 2-3 linii per TODO.
+Exemplu: for-ul e scris, dar inauntru e // TODO: actualizeaza suma si maximul
+NU dezvalui cum se calculeaza in comentarii.`,
+      testNote: "valori mici, n=1, valori negative daca are sens",
+    },
+    medium: {
+      algo: "medie O(n^2): matrice, siruri, prime, sortare",
+      codeLen: "30-50 linii",
+      todoSpec: `Lasa 4-5 locuri TODO de complexitate medie:
+- o functie auxiliara completa (ex: bool estePrim(int n))
+- 2-3 bucle sau conditii cheie din main
+- eventual o functie de afisare sau formatare rezultat
+Scheletul cu declaratii si citire e scris. Studentul implementeaza logica.
+NU da hints despre algoritm in comentarii — doar // TODO: implementeaza functia X`,
+      testNote: "valori mici, valori la limita, n=0 daca are sens",
+    },
+    hard: {
+      algo: "dificila: DP, BFS/DFS, recursivitate",
+      codeLen: "50-75 linii",
+      todoSpec: `Lasa 5+ locuri TODO care formeaza impreuna algoritmul principal:
+- 2-3 functii ale algoritmului (ex: initializare DP, tranzitii, reconstructie)
+- conditii de terminare sau caz de baza
+- logica de actualizare a structurii de date
+Doar declaratii, structuri de date si main-ul schelet sunt scrise.
+NU da hints despre implementare — studentul trebuie sa deduca algoritmul din cerinta.`,
+      testNote: "n=1, n la limita, cazuri degenerate, caz fara solutie",
+    },
+  },
+
+  // ── REIMPLEMENTEAZĂ LIBRARII: cu pointeri ─────────────────────────────────
+  rewrite_lib: {
+    easy: {
+      algo: "pointeri simpli: strlen si strcpy",
+      codeLen: "25-40 linii",
+      libSpec: `Problema: studentul implementeaza 2 functii simple cu pointeri char*.
+- strlen: implementata CORECT ca exemplu de stil cu pointeri (nu folosi [])
+- strcpy: marcata // TODO — studentul o implementeaza
+Functia strlen e scrisa si comentata ca sa arate stilul cu pointeri.
+Main-ul testeaza ambele functii cu 3-4 siruri diferite.
+NU folosi string.h, cstring. Foloseste mereu using namespace std.`,
+      testNote: "sir gol, sir cu un caracter, sir scurt, sir cu spatii",
+    },
+    medium: {
+      algo: "pointeri intermediari: strcmp, strcat, strchr sau strrev",
+      codeLen: "45-65 linii",
+      libSpec: `Problema: 4-5 functii cu pointeri char* sau int*:
+- 2 functii implementate CORECT ca exemple (ex: strlen, strcpy)
+- 2 functii marcate // TODO (ex: strcmp, strcat)
+- optionat: 1 functie implementata GRESIT (are un bug subtil) — studentul o repara
+Aritmetica de pointeri, nu indexare cu []. Main-ul testeaza toate functiile.
+NU folosi string.h, cstring, cmath. Foloseste mereu using namespace std.`,
+      testNote: "siruri egale, siruri diferite, sir gol, caractere speciale",
+    },
+    hard: {
+      algo: "pointeri avansati: strstr, strtok, memcpy, sqrt Newton, sau implementare vector dinamic",
+      codeLen: "65-90 linii",
+      libSpec: `Problema: 6-7 functii cu pointeri, complexitate crescanda:
+- 2 functii implementate CORECT ca exemple avansate (ex: strstr cu pointeri)
+- 3-4 functii marcate // TODO (ex: strtok, memcpy, sqrt Newton)
+- 1 functie implementata GRESIT cu bug dificil (ex: off-by-one in memcpy)
+Include pointer la pointer (**), alocare dinamica (new/delete), sau struct cu pointeri.
+Main-ul are teste extinse pentru toate functiile.
+NU folosi string.h, cstring, cmath, stdlib. Foloseste mereu using namespace std.`,
+      testNote: "pointer null, buffer mare, caractere speciale, valori limita pentru functii numerice",
+    },
+  },
 };
 
-// ─── Prompturi per tip de problema ───────────────────────────────────────────
-function buildPrompt(type, category, ctx, exclude, diff) {
-  const base = `Categorie: ${category.name}. Nivel: ${ctx.hint}.${exclude ? ` Evita titluri: ${exclude}.` : ""}`;
+// ─── Prompt builder compact ────────────────────────────────────────────────────
+function buildPrompt(type, category, difficulty, exclude) {
+  const sp = SPEC[type]?.[difficulty];
+  if (!sp) throw new Error(`Tip/dificultate necunoscut: ${type}/${difficulty}`);
 
-  // Format comun pentru metadate (titlu, cerinta, exemple)
-  // Codul C++ vine DUPA markerii @@CODE_START@@ / @@CODE_END@@
-  // care nu pot aparea niciodata in cod C++
-  const metaFormat = `
-<TITLE>titlu 2-3 cuvinte romana</TITLE>
-<STATEMENT>cerinta clara 1-2 paragrafe romana</STATEMENT>
-<INPUT>descriere date intrare</INPUT>
-<o>descriere date iesire</o>
-<CONSTRAINTS>restrictii ex: 1 le n le 1000, valori intregi</CONSTRAINTS>
-<EX_IN_1>intrare exemplu 1</EX_IN_1>
-<EX_OUT_1>iesire exemplu 1</EX_OUT_1>
-<EX_IN_2>intrare exemplu 2</EX_IN_2>
-<EX_OUT_2>iesire exemplu 2</EX_OUT_2>`;
+  const excl = exclude ? ` Evita titluri: ${exclude}.` : "";
+
+  // Format metadate — fara cod inauntru
+  const meta = `<TITLE>titlu 2-3 cuvinte romana</TITLE>
+<STATEMENT>cerinta 1-2 paragrafe romana</STATEMENT>
+<INPUT>date intrare</INPUT>
+<o>date iesire</o>
+<CONSTRAINTS>restrictii: 1 le n le 1000</CONSTRAINTS>
+<EX_IN_1>intrare ex1</EX_IN_1><EX_OUT_1>iesire ex1</EX_OUT_1>
+<EX_IN_2>intrare ex2</EX_IN_2><EX_OUT_2>iesire ex2</EX_OUT_2>`;
 
   if (type === "debug") {
-    return `Creaza o problema de informatica C++ tip PBInfo. ${base}
+    return `Problema informatica C++ tip PBInfo. Categorie: ${category.name}. Algoritm: ${sp.algo}.${excl}
 
-Raspunde EXACT in formatul urmator (markerii @@CODE_START@@ si @@CODE_END@@ sunt obligatorii si trebuie sa apara exact asa):
-${metaFormat}
+Format raspuns (respecta EXACT markerii, ei nu apar in C++):
+${meta}
 @@CODE_START@@
-// Sursa C++ completa, corecta, cin/cout, using namespace std;
-// Adauga ${diff.bugCount} bug-uri subtile (${DIFF_CTX[diff.id]?.bugs || "off-by-one, initializare gresita"}) direct in cod
-// IMPORTANT: nu adauga comentarii care sa indice unde sunt bug-urile
-// Poti adauga comentarii de tipul "// nu modificati aceasta functie" pe linii complexe corecte
-// Codul TREBUIE sa compileze fara erori de sintaxa
 #include <iostream>
 using namespace std;
-int main() {
-    // implementare cu bug-uri
-}
+// Cod ${sp.codeLen} cu ${sp.bugs}
+// NU adauga comentarii care indica unde sunt bug-urile
+// Poti comenta linii complexe corecte cu "// nu modifica"
+// Codul compileaza fara erori
+int main() { }
 @@CODE_END@@`;
   }
 
   if (type === "complete") {
-    return `Creaza o problema de informatica C++ tip PBInfo unde studentul trebuie sa completeze partile lipsa. ${base}
+    return `Problema informatica C++ tip PBInfo unde studentul completeaza partile lipsa. Categorie: ${category.name}. Algoritm: ${sp.algo}.${excl}
 
-Raspunde EXACT in formatul urmator:
-${metaFormat}
+${sp.todoSpec}
+
+Format raspuns (respecta EXACT markerii):
+${meta}
 @@CODE_START@@
-// Sursa C++ cu parti intentionat lasate goale marcate cu TODO
-// Lasa o parte semnificativa de implementat (nu doar o linie)
-// Poti lasa goala: o functie auxiliara, corpul unui for, logica principala
 #include <iostream>
 using namespace std;
-// Exemplu de structura:
-// void rezolva(int n) {
-//     // TODO: implementeaza algoritmul
-// }
-int main() {
-    // TODO: citire date si apel functii
-}
+// Cod ${sp.codeLen} cu parti TODO
+// NU dezvalui algoritmul in comentarii
+int main() { }
 @@CODE_END@@`;
   }
 
   if (type === "rewrite_lib") {
-    return `Creaza o problema de informatica C++ unde studentul trebuie sa reimplementeze functii din librarii standard FOLOSIND POINTERI. ${base}
-Tipuri de functii de reimplementat: strlen, strcpy, strcat, strcmp, strrev, memset, memcpy, pow, abs, sqrt (cu metoda Newton).
-Nu folosi string.h, cstring, cmath sau alte librarii pentru functiile de reimplementat. Foloseste pointeri char* si aritmetica de pointeri.
+    return `Problema informatica C++ cu pointeri. Categorie: Pointeri. Algoritm: ${sp.algo}.${excl}
 
-Raspunde EXACT in formatul urmator:
-${metaFormat}
+${sp.libSpec}
+
+Format raspuns (respecta EXACT markerii):
+${meta}
 @@CODE_START@@
 #include <iostream>
 using namespace std;
-// Reimplementeaza functiile cerute cu pointeri (fara a folosi libraria originala)
-// Lasa TODO pentru functiile pe care studentul trebuie sa le implementeze
-// Functiile deja implementate servesc ca exemplu de stil
-// TODO: implementeaza functia X cu pointeri
-int main() {
-    // teste pentru functiile implementate
-}
+// Cod ${sp.codeLen}
+// NU include string.h, cstring, cmath pentru functiile de implementat
+int main() { }
 @@CODE_END@@`;
   }
-
-  return "";
 }
 
-// ─── GENERARE PROBLEMA ────────────────────────────────────────────────────────
-// Request 1: cerinta + cod (cu buguri deja incluse pentru "debug", sau cu TODO pentru "complete")
-// Request 2: pentru "debug" — genereaza si salveaza teste bune o singura data
-// Testele se salveaza in problema si se refolosesc la fiecare Submit
+// ─── Prompt pentru teste — include teste care SA DEA GRESIT pe codul cu buguri ─
+function buildTestsPrompt(title, statement, inputSpec, outputSpec, constraints, examples, type, difficulty) {
+  const sp = SPEC[type]?.[difficulty];
+  const exStr = examples.length
+    ? examples.map(e => `in: ${e.input} -> out: ${e.output}`).join("; ")
+    : "";
+
+  // Pentru debug: vrem teste care sa dea gresit pe cod cu buguri
+  // Pentru complete/rewrite_lib: vrem teste care verifica implementarea
+  const testGoal = type === "debug"
+    ? `IMPORTANT: cel putin 3 din 5 teste trebuie sa fie proiectate sa detecteze bug-uri tipice (${sp?.testNote || "valori edge"}).
+Alege inputuri care scot la iveala off-by-one, initializari gresite, conditii inverse.`
+    : `Alege inputuri diverse care verifica corectitudinea implementarii. ${sp?.testNote || ""}`;
+
+  return `Genereaza 5 teste pentru problema C++: "${title}"
+Cerinta: ${statement?.slice(0, 250)}
+Intrare: ${inputSpec} | Iesire: ${outputSpec} | Restrictii: ${constraints}
+${exStr ? `Exemple: ${exStr}` : ""}
+${testGoal}
+
+Raspunde DOAR cu tag-urile (nimic altceva):
+<T1_IN>in1</T1_IN><T1_OUT>out1</T1_OUT>
+<T2_IN>in2</T2_IN><T2_OUT>out2</T2_OUT>
+<T3_IN>in3</T3_IN><T3_OUT>out3</T3_OUT>
+<T4_IN>in4</T4_IN><T4_OUT>out4</T4_OUT>
+<T5_IN>in5</T5_IN><T5_OUT>out5</T5_OUT>`;
+}
+
+// ─── GENERARE PROBLEMA — 2 requesturi ─────────────────────────────────────────
 export async function generateNewProblem(apiKey, category, difficulty, problemType, existingTitles, onStatus) {
   if (!apiKey?.trim()) throw new Error("Token Gemini lipsă. Adaugă-l în Settings.");
 
   const diff    = DIFFICULTIES[difficulty] || DIFFICULTIES.easy;
-  const ctx     = DIFF_CTX[difficulty]     || DIFF_CTX.easy;
-  const tokBase = MAX_TOKENS[difficulty]   || 4096;
   const exclude = existingTitles.slice(-3).join(", ");
 
   // ── REQUEST 1: cerinta + cod ──────────────────────────────────────────────
   onStatus("1/2 — Generare problemă...");
-
-  const p1 = buildPrompt(problemType, category, ctx, exclude, diff);
+  const p1 = buildPrompt(problemType, category, difficulty, exclude);
 
   let r1;
-  try { r1 = await callGemini(apiKey, p1, 0.6, tokBase); }
+  try { r1 = await callGemini(apiKey, p1, 0.65); }
   catch (e) { throw new Error(e.message); }
 
   const title       = tag(r1, "TITLE");
@@ -208,58 +311,57 @@ export async function generateNewProblem(apiKey, category, difficulty, problemTy
   const ex2in = tag(r1, "EX_IN_2"), ex2out = tag(r1, "EX_OUT_2");
   const mainCode = extractCode(r1);
 
-  if (!title)    throw new Error("Gemini nu a returnat titlul. Răspuns:\n" + r1.slice(0, 300));
-  if (!mainCode) throw new Error("Gemini nu a returnat cod C++ valid. Răspuns:\n" + r1.slice(0, 300));
+  if (!title)    throw new Error("Gemini nu a returnat titlul.\n" + r1.slice(0, 300));
+  if (!mainCode) throw new Error("Gemini nu a returnat cod C++.\n" + r1.slice(0, 300));
 
   const examples = [];
   if (ex1in && ex1out) examples.push({ input: ex1in, output: ex1out });
   if (ex2in && ex2out) examples.push({ input: ex2in, output: ex2out });
 
-  // ── REQUEST 2: genereaza teste bune (salvate permanent) ───────────────────
-  // Testele se genereaza O SINGURA DATA si se salveaza — nu se mai regenereaza la Submit
-  onStatus("2/2 — Generare teste...");
-
+  // ── REQUEST 2: teste cu expected calculat din sursa corecta ─────────────
+  // IMPORTANT: dam Gemini sursa corecta si ii cerem sa ruleze mental pe inputuri
+  // alese de el — asa expected-ul e consistent cu sursa, nu inventat
+  onStatus("2/2 — Generare și verificare teste...");
   let savedTests = [];
-  // Pentru "complete" si "rewrite_lib" nu avem buggyCode, codul e cel cu TODO
-  // Pentru "debug" avem codul cu buguri
-  // In ambele cazuri avem nevoie de teste bazate pe cerinta + exemple
   try {
+    const sp = SPEC[problemType]?.[difficulty];
+    const testNote = sp?.testNote || "n=1, valori mici, edge cases";
     const p2 =
-`Esti un profesor de informatica. Genereaza 5 teste diverse pentru urmatoarea problema C++.
-Problema: ${title}
-Cerinta: ${statement}
-Intrare: ${inputSpec}
-Iesire: ${outputSpec}
-Restrictii: ${constraints}
-${examples.length ? `Exemple: ${examples.map(e=>`in="${e.input}" out="${e.output}"`).join(", ")}` : ""}
+`Genereaza 5 teste pentru problema C++: "${title}"
+Cerinta: ${statement?.slice(0, 250)}
+Intrare: ${inputSpec} | Iesire: ${outputSpec} | Restrictii: ${constraints}
+${examples.length ? `Exemple: ${examples.map(e=>`in:${e.input}->out:${e.output}`).join("; ")}` : ""}
+Teste diverse: ${testNote}
 
-Testele trebuie sa fie DIVERSE si sa includa: valori mici, valori la limita, edge cases (n=1, array gol daca are sens, valori negative).
-Raspunde EXACT in formatul urmator (5 teste, exact aceste tag-uri):
-<T1_IN>date intrare test 1</T1_IN><T1_OUT>iesire corecta test 1</T1_OUT>
-<T2_IN>date intrare test 2</T2_IN><T2_OUT>iesire corecta test 2</T2_OUT>
-<T3_IN>date intrare test 3</T3_IN><T3_OUT>iesire corecta test 3</T3_OUT>
-<T4_IN>date intrare test 4</T4_IN><T4_OUT>iesire corecta test 4</T4_OUT>
-<T5_IN>date intrare test 5</T5_IN><T5_OUT>iesire corecta test 5</T5_OUT>`;
+SURSA C++ CORECTA (ruleaza-o mental pentru a calcula outputul exact al fiecarui test):
+${mainCode.slice(0, 1200)}
 
-    const r2 = await callGemini(apiKey, p2, 0.3, 2048);
+Pentru fiecare test: alege input valid, ruleaza mental sursa de mai sus, scrie outputul exact.
+
+Raspunde DOAR cu tag-urile:
+<T1_IN>input1</T1_IN><T1_OUT>output sursa corecta pentru input1</T1_OUT>
+<T2_IN>input2</T2_IN><T2_OUT>output sursa corecta pentru input2</T2_OUT>
+<T3_IN>input3</T3_IN><T3_OUT>output sursa corecta pentru input3</T3_OUT>
+<T4_IN>input4</T4_IN><T4_OUT>output sursa corecta pentru input4</T4_OUT>
+<T5_IN>input5</T5_IN><T5_OUT>output sursa corecta pentru input5</T5_OUT>`;
+
+    const r2 = await callGemini(apiKey, p2, 0.0);
     for (let i = 1; i <= 5; i++) {
       const inp = tag(r2, `T${i}_IN`);
       const out = tag(r2, `T${i}_OUT`);
       if (inp && out) savedTests.push({ input: inp, expected: out });
     }
-  } catch (e) {
-    console.warn("Generare teste eșuată:", e.message);
-  }
+  } catch (e) { console.warn("Teste eșuate:", e.message); }
 
   const problem = {
     id: Date.now().toString(),
     title, statement, inputSpec, outputSpec, constraints, examples,
-    tests: savedTests,          // salvate permanent, refolosite la fiecare Submit
-    buggyCode: mainCode,        // pentru debug: cod cu buguri; pentru complete/rewrite: cod cu TODO
-    correctCode: mainCode,      // pastram si versiunea originala
+    tests: savedTests,
+    buggyCode: mainCode,
+    correctCode: mainCode,
     category: category.name,
     difficulty: diff.id,
-    problemType,                // "debug" | "complete" | "rewrite_lib"
+    problemType,
     solved: false,
     createdAt: new Date().toISOString(),
   };
