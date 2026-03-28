@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { getProblems, generateNewProblem, deleteProblem, DIFFICULTIES } from "../utils/storage";
+import { PROBLEM_TYPES } from "../utils/categories";
 import { PBINFO_CATEGORIES } from "../utils/categories";
 import "./ProblemsPage.css";
 
@@ -11,6 +12,7 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
   const [genError, setGenError] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(PBINFO_CATEGORIES[0].id);
   const [selectedDifficulty, setSelectedDifficulty] = useState("easy");
+  const [selectedType, setSelectedType] = useState("debug");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [genStatus, setGenStatus] = useState("");
   const dropdownRef = useRef(null);
@@ -43,7 +45,7 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
     try {
       const cat = PBINFO_CATEGORIES.find(c => c.id === selectedCategory);
       const existing = getProblems().map(p => p.title);
-      await generateNewProblem(geminiKey, cat, selectedDifficulty, existing, setGenStatus);
+      await generateNewProblem(geminiKey, cat, selectedDifficulty, selectedType, existing, setGenStatus);
       setProblems(getProblems());
       setGenStatus("");
     } catch (e) {
@@ -152,6 +154,28 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
               </div>
             </div>
 
+            {/* Row 3: Problem type */}
+            <div className="gen-row">
+              <div className="gen-row-label">Tip Problemă</div>
+              <div className="type-pills">
+                {PROBLEM_TYPES.map(pt => (
+                  <button
+                    key={pt.id}
+                    className={"type-pill" + (selectedType === pt.id ? " active" : "")}
+                    onClick={() => setSelectedType(pt.id)}
+                    disabled={generating}
+                  >
+                    <span className="type-pill-icon">{pt.icon}</span>
+                    <div className="type-pill-body">
+                      <span className="type-pill-label">{pt.label}</span>
+                      <span className="type-pill-desc">{pt.description}</span>
+                    </div>
+                    <span className={"type-pill-tag tag-" + pt.tagColor}>{pt.tag}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Selected summary + Generate button */}
             <div className="gen-footer-row">
               <div className="gen-summary">
@@ -207,6 +231,14 @@ export default function ProblemsPage({ onDebug, onBack, onSettings, geminiKey })
                           <span className="meta-sep">·</span>
                           <span className={"meta-diff diff-" + p.difficulty}>
                             {DIFFICULTIES[p.difficulty]?.icon} {DIFFICULTIES[p.difficulty]?.label}
+                          </span>
+                        </>
+                      )}
+                      {p.problemType && (
+                        <>
+                          <span className="meta-sep">·</span>
+                          <span className="meta-type">
+                            {{"debug":"🐛","complete":"✏️","rewrite_lib":"📦"}[p.problemType]} {{"debug":"Debug","complete":"Completează","rewrite_lib":"Lib"}[p.problemType]}
                           </span>
                         </>
                       )}

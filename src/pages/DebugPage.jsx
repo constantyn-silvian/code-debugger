@@ -3,108 +3,160 @@ import { updateProblem } from "../utils/storage";
 import { runTests } from "../utils/runner";
 import "./DebugPage.css";
 
-// ─── Syntax highlighter C++ minimal ──────────────────────────────────────────
-const KW = new Set([
+// ─── C++ Syntax Highlighter ───────────────────────────────────────────────────
+const KEYWORDS = new Set([
   "int","long","short","char","float","double","bool","void","unsigned","signed",
   "if","else","for","while","do","return","break","continue","switch","case","default",
   "struct","class","public","private","protected","new","delete","nullptr","true","false",
-  "include","define","pragma","ifdef","endif","namespace","using","template","typename",
-  "const","static","auto","register","volatile","extern","inline","virtual","override",
-  "cout","cin","endl","string","vector","map","set","pair","queue","stack","priority_queue",
-  "sort","min","max","swap","abs","sqrt","pow","printf","scanf","main",
+  "namespace","using","template","typename","const","static","auto","register",
+  "volatile","extern","inline","virtual","override","this","sizeof","typedef","enum",
 ]);
+const STD_IDS = new Set([
+  "cout","cin","cerr","endl","string","vector","map","set","pair","queue","stack",
+  "deque","list","unordered_map","unordered_set","priority_queue","bitset","array",
+  "sort","reverse","find","min","max","swap","abs","sqrt","pow","ceil","floor",
+  "printf","scanf","main","ios_base","sync_with_stdio","tie","make_pair","push_back",
+  "pop_back","push","pop","top","front","back","size","empty","begin","end","insert",
+  "erase","count","lower_bound","upper_bound","fill","accumulate","memset","memcpy",
+]);
+// Multi-char operators — order matters (longer first)
+const MULTI_OPS = [
+  "<<",">>","<=",">=","==","!=","&&","||","++","--","->","::","+=","-=","*=","/=","%=","**",
+];
 
-// Escape HTML chars FIRST, then highlight on the escaped string
 function esc(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function highlightLine(line) {
+  const out = [];
+  let i = 0;
+
+  const push = (cls, raw) => {
+    const escaped = esc(raw);
+    out.push(cls ? `<span class="${cls}">${escaped}</span>` : escaped);
+  };
+
+  while (i < line.length) {
+    const ch = line[i];
+
+    // Whitespace — emit as-is (already safe)
+    if (ch === " " || ch === "\t") { out.push(ch === "\t" ? "  " : " "); i++; continue; }
+
+    // Line comment //
+    if (ch === "/" && line[i+1] === "/") { push("hl-cmt", line.slice(i)); break; }
+
+    // Block comment start /* (single line portion)
+    if (ch === "/" && line[i+1] === "*") {
+      const end = line.indexOf("*/", i+2);
+      if (end !== -1) { push("hl-cmt", line.slice(i, end+2)); i = end+2; }
+      else { push("hl-cmt", line.slice(i)); break; }
+      continue;
+    }
+
+    // Preprocessor line (starts at col 0)
+    if (i === 0 && ch === "#") {
+      // Highlight directive keyword
+      const sp = line.search(/\s/, 1);
+      if (sp === -1) { push("hl-pp", line); break; }
+      push("hl-pp", line.slice(0, sp));
+      // Highlight <header> or "header" as string
+      const rest = line.slice(sp);
+      const ltIdx = rest.indexOf("<");
+      const gtIdx = rest.lastIndexOf(">");
+      const q1 = rest.indexOf('"');
+      const q2 = rest.lastIndexOf('"');
+      if (ltIdx !== -1 && gtIdx > ltIdx) {
+        push(null, rest.slice(0, ltIdx));
+        push("hl-str", rest.slice(ltIdx, gtIdx+1));
+        push(null, rest.slice(gtIdx+1));
+      } else if (q1 !== -1 && q2 > q1) {
+        push(null, rest.slice(0, q1));
+        push("hl-str", rest.slice(q1, q2+1));
+        push(null, rest.slice(q2+1));
+      } else { push(null, rest); }
+      break;
+    }
+
+    // String literal "..."
+    if (ch === '"') {
+      let j = i+1;
+      while (j < line.length) {
+        if (line[j] === '"' && line[j-1] !== "\\") { j++; break; }
+        j++;
+      }
+      push("hl-str", line.slice(i, j)); i = j; continue;
+    }
+
+    // Char literal '.'
+    if (ch === "'") {
+      let j = i+1;
+      while (j < line.length) {
+        if (line[j] === "'" && line[j-1] !== "\\") { j++; break; }
+        j++;
+      }
+      push("hl-str", line.slice(i, j)); i = j; continue;
+    }
+
+    // Number literal
+    if (/\d/.test(ch) && (i === 0 || !/\w/.test(line[i-1]))) {
+      let j = i;
+      // hex
+      if (line[i] === "0" && (line[i+1] === "x" || line[i+1] === "X")) {
+        j += 2; while (j < line.length && /[0-9a-fA-F]/.test(line[j])) j++;
+      } else {
+        while (j < line.length && /[\d.eEfFuUlL]/.test(line[j])) j++;
+      }
+      push("hl-num", line.slice(i, j)); i = j; continue;
+    }
+
+    // Identifier or keyword
+    if (/[a-zA-Z_]/.test(ch)) {
+      let j = i;
+      while (j < line.length && /\w/.test(line[j])) j++;
+      const word = line.slice(i, j);
+      if (KEYWORDS.has(word))     push("hl-kw",  word);
+      else if (STD_IDS.has(word)) push("hl-std", word);
+      else                        push("hl-id",  word);
+      i = j; continue;
+    }
+
+    // Multi-char operators — check longest match first
+    let matched = false;
+    for (const op of MULTI_OPS) {
+      if (line.startsWith(op, i)) {
+        push("hl-op", op); i += op.length; matched = true; break;
+      }
+    }
+    if (matched) continue;
+
+    // Single-char punctuation/operator
+    push("hl-op", ch); i++;
+  }
+
+  return out.join("");
 }
 
 function highlightCpp(code) {
-  const lines = code.split("\n");
-  return lines.map((line, li) => {
-    const spans = [];
-    let i = 0;
-
-    // push: takes raw text, escapes it, wraps in span
-    const push = (cls, txt) => spans.push(
-      cls ? `<span class="${cls}">${esc(txt)}</span>` : esc(txt)
-    );
-
-    while (i < line.length) {
-      // Comment //
-      if (line[i] === "/" && line[i+1] === "/") {
-        push("hl-comment", line.slice(i)); break;
-      }
-      // Preprocessor # (whole line)
-      if (i === 0 && line[i] === "#") {
-        const space = line.indexOf(" ");
-        if (space === -1) { push("hl-pp", line); break; }
-        push("hl-pp", line.slice(0, space));
-        // rest of #include line — highlight the <header> as a string
-        const rest = line.slice(space);
-        const ltIdx = rest.indexOf("<");
-        const gtIdx = rest.lastIndexOf(">");
-        if (ltIdx !== -1 && gtIdx > ltIdx) {
-          push(null, rest.slice(0, ltIdx));
-          push("hl-string", rest.slice(ltIdx, gtIdx + 1));
-          push(null, rest.slice(gtIdx + 1));
-        } else {
-          push("hl-string", rest);
-        }
-        break;
-      }
-      // String "..."
-      if (line[i] === '"') {
-        let j = i + 1;
-        while (j < line.length && !(line[j] === '"' && line[j-1] !== "\\")) j++;
-        push("hl-string", line.slice(i, j + 1)); i = j + 1; continue;
-      }
-      // Char '...'
-      if (line[i] === "'") {
-        let j = i + 1;
-        while (j < line.length && !(line[j] === "'" && line[j-1] !== "\\")) j++;
-        push("hl-string", line.slice(i, j + 1)); i = j + 1; continue;
-      }
-      // Number
-      if (/\d/.test(line[i]) && (i === 0 || /\W/.test(line[i-1]))) {
-        let j = i;
-        while (j < line.length && /[\d.xXa-fA-FuUlL]/.test(line[j])) j++;
-        push("hl-number", line.slice(i, j)); i = j; continue;
-      }
-      // Word — keyword or identifier
-      if (/[a-zA-Z_]/.test(line[i])) {
-        let j = i;
-        while (j < line.length && /\w/.test(line[j])) j++;
-        const word = line.slice(i, j);
-        push(KW.has(word) ? "hl-kw" : "hl-id", word);
-        i = j; continue;
-      }
-      // << >> operators (2-char)
-      if ((line[i] === "<" && line[i+1] === "<") || (line[i] === ">" && line[i+1] === ">")) {
-        push("hl-op", line.slice(i, i + 2)); i += 2; continue;
-      }
-      // Single char operator/punctuation — escape individually
-      push("hl-op", line[i]); i++;
-    }
-
-    return `<div class="hl-line" data-line="${li+1}">${spans.join("") || "\u00a0"}</div>`;
+  return code.split("\n").map((line, li) => {
+    const content = highlightLine(line);
+    return `<div class="hl-line">${content || "\u00a0"}</div>`;
   }).join("");
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── DebugPage ────────────────────────────────────────────────────────────────
 export default function DebugPage({ problem, onBack, onSettings, geminiKey }) {
-  const [code, setCode]       = useState(problem.buggyCode || problem.correctCode || "");
-  const [results, setResults] = useState(null);
-  const [running, setRunning] = useState(false);
+  const [code, setCode]         = useState(problem.buggyCode || "");
+  const [results, setResults]   = useState(null);
+  const [running, setRunning]   = useState(false);
   const [runError, setRunError] = useState("");
   const [activeTab, setActiveTab] = useState("problem");
-  const [hint, setHint]       = useState("");
+  const [hint, setHint]         = useState("");
   const [hintLoading, setHintLoading] = useState(false);
   const [showHint, setShowHint] = useState(false);
-  const textareaRef = useRef(null);
+  const textareaRef  = useRef(null);
   const highlightRef = useRef(null);
 
-  // Sync scroll between textarea and highlight layer
   const syncScroll = useCallback(() => {
     if (textareaRef.current && highlightRef.current) {
       highlightRef.current.scrollTop  = textareaRef.current.scrollTop;
@@ -113,17 +165,15 @@ export default function DebugPage({ problem, onBack, onSettings, geminiKey }) {
   }, []);
 
   useEffect(() => {
-    if (highlightRef.current) {
+    if (highlightRef.current)
       highlightRef.current.innerHTML = highlightCpp(code);
-    }
   }, [code]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Tab") {
       e.preventDefault();
       const s = e.target.selectionStart, en = e.target.selectionEnd;
-      const next = code.slice(0, s) + "  " + code.slice(en);
-      setCode(next);
+      setCode(code.slice(0, s) + "  " + code.slice(en));
       requestAnimationFrame(() => {
         textareaRef.current.selectionStart = s + 2;
         textareaRef.current.selectionEnd   = s + 2;
@@ -134,12 +184,14 @@ export default function DebugPage({ problem, onBack, onSettings, geminiKey }) {
   const handleSubmit = async () => {
     setRunning(true); setRunError(""); setResults(null);
     try {
-      const res = await runTests(problem, code, geminiKey);
+      const res = await runTests(
+        problem, code, geminiKey,
+        (tests) => updateProblem(problem.id, { tests }) // salveaza testele daca au fost generate acum
+      );
       setResults(res);
       setActiveTab("tests");
-      if (res.every(r => r.passed)) {
+      if (res.every(r => r.passed))
         updateProblem(problem.id, { solved: true, solvedCode: code });
-      }
     } catch (e) { setRunError(e.message); }
     setRunning(false);
   };
@@ -156,12 +208,13 @@ export default function DebugPage({ problem, onBack, onSettings, geminiKey }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [{ text:
-              `Analizezi codul C++ al unui student pentru problema "${problem.title}".
-Cerinta: ${problem.statement}
-Cod student:\n${code}
-Da un HINT scurt (1-2 propozitii) care orienteaza studentul spre bug fara sa il dezvaluie direct. Raspunde doar cu hintul, in romana.`
+`Analizezi codul C++ al unui student pentru problema "${problem.title}".
+Cerinta: ${problem.statement?.slice(0, 300)}
+Cod student:
+${code.slice(0, 800)}
+Da un HINT scurt (max 2 propozitii) care orienteaza studentul spre bug fara sa il dezvaluie direct. Raspunde in romana.`
             }] }],
-            generationConfig: { temperature: 0.5, maxOutputTokens: 150 },
+            generationConfig: { temperature: 0.5, maxOutputTokens: 120 },
           }),
         }
       );
@@ -171,9 +224,15 @@ Da un HINT scurt (1-2 propozitii) care orienteaza studentul spre bug fara sa il 
     setHintLoading(false);
   };
 
-  const passed = results ? results.filter(r => r.passed).length : 0;
-  const total  = results?.length || 0;
+  const passed    = results ? results.filter(r => r.passed).length : 0;
+  const total     = results?.length || 0;
   const allPassed = results && total > 0 && passed === total;
+
+  const typeLabel = {
+    debug:       "🐛 Debug",
+    complete:    "✏️ Completează",
+    rewrite_lib: "📦 Reimplementează",
+  }[problem.problemType] || "🐛 Debug";
 
   return (
     <div className="debug-page">
@@ -185,6 +244,7 @@ Da un HINT scurt (1-2 propozitii) care orienteaza studentul spre bug fara sa il 
             <span className="debug-sep">/</span>
             <span className="debug-problem-name">{problem.title}</span>
           </div>
+          <span className="debug-type-badge">{typeLabel}</span>
         </div>
         <div className="debug-header-right">
           {problem.solved && <span className="solved-badge">✓ Rezolvată</span>}
@@ -193,45 +253,33 @@ Da un HINT scurt (1-2 propozitii) care orienteaza studentul spre bug fara sa il 
       </header>
 
       <div className="debug-layout">
-        {/* ── Left: cerinta + teste ── */}
+        {/* ── Left panel ── */}
         <div className="debug-left">
           <div className="panel-tabs">
-            <button className={"panel-tab" + (activeTab==="problem" ? " active" : "")} onClick={() => setActiveTab("problem")}>
-              Cerință
-            </button>
-            <button className={"panel-tab" + (activeTab==="tests" ? " active" : "")} onClick={() => setActiveTab("tests")}>
+            <button className={"panel-tab"+(activeTab==="problem"?" active":"")} onClick={()=>setActiveTab("problem")}>Cerință</button>
+            <button className={"panel-tab"+(activeTab==="tests"?" active":"")} onClick={()=>setActiveTab("tests")}>
               Teste {results && <span className="tab-badge">{passed}/{total}</span>}
             </button>
           </div>
 
           {activeTab === "problem" && (
             <div className="problem-statement">
-              {[
-                ["Cerința", problem.statement],
-                ["Date de intrare", problem.inputSpec],
-                ["Date de ieșire", problem.outputSpec],
-                ["Restricții", problem.constraints],
-              ].filter(([,v]) => v).map(([label, text]) => (
-                <div key={label} className="statement-section">
-                  <div className="statement-label">{label}</div>
-                  <div className="statement-text">{text}</div>
-                </div>
+              {[["Cerința",problem.statement],["Date de intrare",problem.inputSpec],["Date de ieșire",problem.outputSpec],["Restricții",problem.constraints]]
+                .filter(([,v])=>v).map(([label,text])=>(
+                  <div key={label} className="statement-section">
+                    <div className="statement-label">{label}</div>
+                    <div className="statement-text">{text}</div>
+                  </div>
               ))}
 
               {problem.examples?.length > 0 && (
                 <div className="statement-section">
                   <div className="statement-label">Exemple</div>
-                  {problem.examples.map((ex, i) => (
+                  {problem.examples.map((ex,i)=>(
                     <div key={i} className="example-block">
                       <div className="example-row">
-                        <div className="example-col">
-                          <div className="example-col-label">Intrare</div>
-                          <pre className="example-val">{ex.input}</pre>
-                        </div>
-                        <div className="example-col">
-                          <div className="example-col-label">Ieșire</div>
-                          <pre className="example-val">{ex.output}</pre>
-                        </div>
+                        <div className="example-col"><div className="example-col-label">Intrare</div><pre className="example-val">{ex.input}</pre></div>
+                        <div className="example-col"><div className="example-col-label">Ieșire</div><pre className="example-val">{ex.output}</pre></div>
                       </div>
                     </div>
                   ))}
@@ -240,11 +288,9 @@ Da un HINT scurt (1-2 propozitii) care orienteaza studentul spre bug fara sa il 
 
               <div className="hint-section">
                 <button className="btn btn-ghost btn-sm" onClick={handleHint} disabled={hintLoading}>
-                  {hintLoading ? <><span className="spinner" style={{width:12,height:12}}/> Generare hint...</> : "💡 Hint AI"}
+                  {hintLoading ? <><span className="spinner" style={{width:12,height:12}}/> Generare...</> : "💡 Hint AI"}
                 </button>
-                {showHint && hint && (
-                  <div className="hint-box"><span className="hint-label">Hint:</span> {hint}</div>
-                )}
+                {showHint && hint && <div className="hint-box"><span className="hint-label">Hint:</span> {hint}</div>}
               </div>
             </div>
           )}
@@ -254,25 +300,23 @@ Da un HINT scurt (1-2 propozitii) care orienteaza studentul spre bug fara sa il 
               {!results ? (
                 <div className="tests-empty">
                   <div className="tests-empty-icon">▶</div>
-                  <div>Apasă Submit — Gemini generează și verifică testele</div>
+                  <div>{problem.tests?.length > 0 ? `${problem.tests.length} teste salvate — apasă Submit` : "Apasă Submit — Gemini generează testele"}</div>
                 </div>
               ) : (
                 <div className="tests-list">
-                  <div className={"tests-summary " + (allPassed ? "all-pass" : "some-fail")}>
+                  <div className={"tests-summary "+(allPassed?"all-pass":"some-fail")}>
                     {allPassed ? `✓ Toate ${total} teste trecute! Felicitări!` : `${passed}/${total} teste trecute`}
                   </div>
-                  {results.map((r, i) => (
-                    <div key={i} className={"test-result " + (r.passed ? "pass" : "fail")}>
+                  {results.map((r,i)=>(
+                    <div key={i} className={"test-result "+(r.passed?"pass":"fail")}>
                       <div className="test-result-header">
-                        <span className={"test-status " + (r.passed ? "pass" : "fail")}>
-                          {r.passed ? "✓" : "✗"} Test #{i+1}
-                        </span>
+                        <span className={"test-status "+(r.passed?"pass":"fail")}>{r.passed?"✓":"✗"} Test #{i+1}</span>
                       </div>
                       <div className="test-io">
-                        {[["Input", r.input], ["Expected", r.expected], ["Got", r.actual]].map(([lbl, val]) => (
+                        {[["Input",r.input],["Expected",r.expected],["Got",r.actual]].map(([lbl,val])=>(
                           <div key={lbl} className="test-io-row">
                             <span className="test-io-label">{lbl}:</span>
-                            <pre className={"test-io-val" + (lbl==="Got" && !r.passed ? " wrong" : "")}>{val}</pre>
+                            <pre className={"test-io-val"+(lbl==="Got"&&!r.passed?" wrong":"")}>{val}</pre>
                           </div>
                         ))}
                       </div>
@@ -284,31 +328,23 @@ Da un HINT scurt (1-2 propozitii) care orienteaza studentul spre bug fara sa il 
           )}
         </div>
 
-        {/* ── Right: editor cu syntax highlight ── */}
+        {/* ── Right panel: editor ── */}
         <div className="debug-right">
           <div className="editor-header">
             <div className="editor-header-left">
               <span className="editor-lang">C++</span>
               <span className="editor-filename">main.cpp</span>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => setCode(problem.buggyCode || problem.correctCode || "")}>
-              ↺ Reset
-            </button>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setCode(problem.buggyCode||"")}>↺ Reset</button>
           </div>
 
           <div className="editor-wrapper">
-            {/* Highlight layer (underneath) */}
-            <div
-              className="hl-layer"
-              ref={highlightRef}
-              aria-hidden="true"
-            />
-            {/* Transparent textarea (on top) */}
+            <div className="hl-layer" ref={highlightRef} aria-hidden="true" />
             <textarea
               ref={textareaRef}
               className="code-editor"
               value={code}
-              onChange={e => setCode(e.target.value)}
+              onChange={e=>setCode(e.target.value)}
               onKeyDown={handleKeyDown}
               onScroll={syncScroll}
               spellCheck={false}
@@ -320,16 +356,10 @@ Da un HINT scurt (1-2 propozitii) care orienteaza studentul spre bug fara sa il 
           <div className="editor-footer">
             <div className="editor-footer-left">
               {runError && <div className="run-error">{runError}</div>}
-              {results && (
-                <div className={"run-summary " + (allPassed ? "pass" : "fail")}>
-                  {allPassed ? `✓ ${passed}/${total} teste trecute` : `✗ ${passed}/${total} teste trecute`}
-                </div>
-              )}
+              {results && <div className={"run-summary "+(allPassed?"pass":"fail")}>{allPassed?`✓ ${passed}/${total}`:`✗ ${passed}/${total}`} teste</div>}
             </div>
             <button className="btn btn-primary" onClick={handleSubmit} disabled={running}>
-              {running
-                ? <><span className="spinner" style={{width:14,height:14,flexShrink:0}}/> Evaluare...</>
-                : <><span>▶</span> Submit</>}
+              {running ? <><span className="spinner" style={{width:14,height:14,flexShrink:0}}/> Evaluare...</> : <><span>▶</span> Submit</>}
             </button>
           </div>
         </div>

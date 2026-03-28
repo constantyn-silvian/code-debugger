@@ -454,3 +454,78 @@
 .meta-diff.diff-easy { color: var(--green); }
 .meta-diff.diff-medium { color: var(--yellow); }
 .meta-diff.diff-hard { color: var(--red); }
+
+/* ─── Problem type pills ─────────────────────────────────────────────────────── */
+
+.type-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.type-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition);
+  width: 100%;
+}
+.type-pill:hover { border-color: var(--text3); background: var(--bg3); }
+.type-pill.active { border-color: var(--accent); background: rgba(0,255,136,0.06); }
+
+.type-pill-icon { font-size: 18px; flex-shrink: 0; }
+
+.type-pill-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+}
+
+.type-pill-label {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.type-pill-desc {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.type-pill-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+.tag-red    { background: rgba(255,51,102,0.12); color: var(--red);    border: 1px solid rgba(255,51,102,0.3); }
+.tag-yellow { background: rgba(255,215,0,0.10);  color: var(--yellow); border: 1px solid rgba(255,215,0,0.3);  }
+.tag-purple { background: rgba(124,58,237,0.12); color: #a78bfa;      border: 1px solid rgba(124,58,237,0.3); }
+
+/* meta type badge in card */
+.meta-type {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+
+/* debug type badge in debug header */
+.debug-type-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+}

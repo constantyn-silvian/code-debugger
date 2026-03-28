@@ -445,8 +445,28 @@
 /* Token colors — C++ */
 .hl-kw     { color: #c792ea; }          /* keywords */
 .hl-pp     { color: #82aaff; }          /* #include #define */
-.hl-string { color: #c3e88d; }          /* "strings" 'chars' */
-.hl-number { color: #f78c6c; }          /* numbers */
-.hl-comment{ color: #546e7a; font-style: italic; } /* // comments */
+.hl-string-OLD { color: #c3e88d; }          /* "strings" 'chars' */
+.hl-number-OLD { color: #f78c6c; }          /* numbers */
+.hl-comment-OLD{ color: #546e7a; font-style: italic; } /* // comments */
 .hl-op     { color: #89ddff; }          /* operators () {} ; */
 .hl-id     { color: #eeffff; }          /* identifiers */
+
+.debug-type-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* Fix highlight colors */
+.hl-kw  { color: #c792ea; }
+.hl-std { color: #80cbc4; }
+.hl-str { color: #c3e88d; }
+.hl-num { color: #f78c6c; }
+.hl-cmt { color: #546e7a; font-style: italic; }
+.hl-pp  { color: #82aaff; }
+.hl-op  { color: #89ddff; }
+.hl-id  { color: #eeffff; }
