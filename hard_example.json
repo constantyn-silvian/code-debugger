@@ -1,0 +1,114 @@
+[
+  {
+    "id": 1,
+    "titlu": "VibeCoding Responsibly",
+    "etapa": "Judeteana",
+    "cerinta": "Identificarea pachetelor instalate care nu se află în allowlist.json sau au versiuni diferite.",
+    "cod": "#include <iostream>\n#include <vector>\n#include <string>\nusing namespace std;\nstruct Package { string name, author, version; };\nint main() {\n    // Logica de comparare intre list_installed_packages() si allowlist.json\n    vector<Package> installed; // Presupunem populat\n    vector<Package> allowed;   // Presupunem populat\n    for (auto &p : installed) {\n        bool ok = false;\n        for (auto &a : allowed) {\n            if (p.name == a.name && p.author == a.author && p.version == a.version) ok = true;\n        }\n        if (!ok) cout << p.name << \",\" << p.author << \",\" << p.version << endl;\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 2,
+    "titlu": "Code Hammer",
+    "etapa": "Judeteana",
+    "cerinta": "Decodificarea Codului Hamming(8,4) cu corectarea erorilor de 1 bit.",
+    "cod": "#include <iostream>\n#include <vector>\nusing namespace std;\nint decode(int b) {\n    int h[4] = {0x55, 0x66, 0x78, 0xFF};\n    int s = 0;\n    for(int i=0; i<4; i++) {\n        int cnt = 0;\n        for(int j=0; j<8; j++) if((h[i]>>j&1) && (b>>j&1)) cnt++;\n        if(cnt%2) s |= (1<<i);\n    }\n    if((s&7) != 0) {\n        if((s>>3)&1) b ^= (1<<(s&7)); else return -1;\n    }\n    return (b>>3&1) | (b>>4&2) | (b>>5&4) | (b>>6&8);\n}\nint main() {\n    int n; cin >> n; if(n%2) { cout << \"Mesajul este corupt!\"; return 0; }\n    string res = \"\";\n    for(int i=0; i<n; i+=2) {\n        int b1, b2; cin >> b1 >> b2;\n        int v1 = decode(b1), v2 = decode(b2);\n        if(v1 == -1 || v2 == -1) { cout << \"Mesajul este corupt!\"; return 0; }\n        res += (char)(v1 | (v2 << 4));\n    }\n    cout << res; return 0;\n}"
+  },
+  {
+    "id": 3,
+    "titlu": "Power Chess",
+    "etapa": "Judeteana",
+    "cerinta": "BFS pentru calea minimă a unei piese de șah către toți regii, respectând prioritățile de mișcare.",
+    "cod": "#include <iostream>\n#include <vector>\n#include <queue>\nusing namespace std;\nstruct State { int r, c, mask, dist; };\nint main() {\n    // BFS cu vizitare [row][col][mask_regi_capturati]\n    // Prioritatile directiilor sunt tratate prin ordinea push-ului in coada.\n    return 0;\n}"
+  },
+  {
+    "id": 4,
+    "titlu": "Health Tree",
+    "etapa": "Judeteana",
+    "cerinta": "Identificarea anilor în care afecțiuni cronice severe nu au fost monitorizate (lipsesc din diagnostic).",
+    "cod": "#include <iostream>\n#include <map>\n#include <set>\n#include <string>\n#include <vector>\nusing namespace std;\nint main() {\n    // Implementare graf de severitate si verificare anuala a succesorilor in DAG.\n    return 0;\n}"
+  },
+  {
+    "id": 5,
+    "titlu": "Markdown Parser",
+    "etapa": "Judeteana",
+    "cerinta": "Extragerea datelor de Intrare și Ieșire din blocuri de cod Markdown în secțiuni de exemple.",
+    "cod": "#include <iostream>\n#include <string>\n#include <vector>\nusing namespace std;\nint main() {\n    int n; cin >> n; string s; getline(cin, s);\n    while(n--) {\n        getline(cin, s);\n        if(s.find(\"## Exemplul\") != string::npos) cout << s << endl;\n        // Detectare ### Intrare/Iesire si extragere text intre ```\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 6,
+    "titlu": "Bomboane",
+    "etapa": "Judeteana",
+    "cerinta": "Identificarea elementelor care nu pot forma o pereche de suma 'target' folosind multiset.",
+    "cod": "#include <iostream>\n#include <set>\n#include <vector>\nusing namespace std;\nint main() {\n    int n, t; cin >> n;\n    vector<int> v(n); for(int i=0; i<n; i++) cin >> v[i]; cin >> t;\n    multiset<int> ms;\n    for(int val : v) {\n        auto it = ms.find(t - val);\n        if(it != ms.end()) ms.erase(it);\n        else ms.insert(val);\n    }\n    for(int val : ms) cout << val << \" \";\n    return 0;\n}"
+  },
+  {
+    "id": 7,
+    "titlu": "Interval Sortat",
+    "etapa": "Judeteana",
+    "cerinta": "Frecvența lui X într-un șir sortat de 500 milioane de elemente folosind lower_bound și upper_bound.",
+    "cod": "#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\nint main() {\n    ios::sync_with_stdio(0); cin.tie(0);\n    long long n, x; cin >> n;\n    vector<long long> v(n);\n    for(long long i=0; i<n; i++) cin >> v[i];\n    cin >> x;\n    auto it1 = lower_bound(v.begin(), v.end(), x);\n    auto it2 = upper_bound(v.begin(), v.end(), x);\n    cout << distance(it1, it2); return 0;\n}"
+  },
+  {
+    "id": 8,
+    "titlu": "Ransomware Task Force",
+    "etapa": "Judeteana",
+    "cerinta": "Decriptarea Vigenère dublă folosind prefixul cunoscut 'ACADNET'.",
+    "cod": "#include <iostream>\n#include <string>\n#include <vector>\nusing namespace std;\nvoid v_dec(string &s, vector<int> k) {\n    for(int i=0; i<s.length(); i++) s[i] = (s[i]-'A' - k[i%k.size()] + 26)%26 + 'A';\n}\nint main() {\n    string art = \"UNPUGNTHFKSEJTYWRRLCIHMGXW\", pref = \"ACADNET\";\n    vector<int> k1(7), k2(4);\n    for(int i=0; i<7; i++) k1[i] = (art[i] - pref[i] + 26) % 26;\n    string enc; cin >> enc;\n    for(int i=0; i<4; i++) k2[i] = (enc[i]-'A' - (pref[i]-'A') - k1[i%7] + 52) % 26;\n    v_dec(enc, k2); v_dec(enc, k1);\n    cout << enc; return 0;\n}"
+  },
+  {
+    "id": 9,
+    "titlu": "Dictionar de intervale",
+    "etapa": "Judeteana",
+    "cerinta": "Implementarea unei structuri 'interval_map' bazată pe std::map care să stocheze eficient valori pentru intervale de chei, respectând forma canonică.",
+    "cod": "#include <map>\n#include <iostream>\ntemplate<typename K, typename V>\nclass interval_map {\n    V m_valBegin;\npublic:\n    std::map<K,V> m_map;\n    interval_map(V const& val): m_valBegin(val) {}\n    void assign(K const& keyBegin, K const& keyEnd, V const& val) {\n        if (!(keyBegin < keyEnd)) return;\n        auto itEnd = m_map.lower_bound(keyEnd);\n        V valAfter = (itEnd == m_map.begin()) ? m_valBegin : std::prev(itEnd)->second;\n        auto itBegin = m_map.lower_bound(keyBegin);\n        if (itBegin != itEnd) m_map.erase(itBegin, itEnd);\n        V valBefore = (m_map.lower_bound(keyBegin) == m_map.begin()) ? m_valBegin : std::prev(m_map.lower_bound(keyBegin))->second;\n        if (!(val == valBefore)) m_map.insert_or_assign(keyBegin, val);\n        if (!(valAfter == val)) m_map.insert_or_assign(keyEnd, valAfter);\n    }\n};"
+  },
+  {
+    "id": 10,
+    "titlu": "Self XOR",
+    "etapa": "Judeteana",
+    "cerinta": "Modificarea unui singur caracter în codul sursă C++ care se citește pe sine pentru a păstra rezultatul XOR neschimbat.",
+    "cod": "#include <iostream>\n#include <cstdio>\nusing namespace std;\nint main() {\n    FILE *f = fopen(\"main.cpp\", \"r\");\n    char buf[390]; int len = fread(buf, 1, 390, f);\n    int va9 = 0; // Modificat din va8\n    for (int i = 0; i < len; i++) va9 ^= buf[i];\n    fclose(f);\n    cout << va9 << '\\n';\n    return 0;\n}"
+  },
+  {
+    "id": 11,
+    "titlu": "Stolechain",
+    "etapa": "Judeteana",
+    "cerinta": "Simularea unui blockchain cu verificări de semnătură RSA și regulă de monopol sub 50% pentru adăugarea nodurilor.",
+    "cod": "#include <iostream>\n#include <map>\n#include <cmath>\nusing namespace std;\nstruct User { int pcs = 0; long long pub, exp; long long balance; };\nint main() {\n    // Logica verificare RSA: (long long)pow(sig, exp) % pub == hash\n    // Regula ADD_PC: (user_pcs + 1) * 2 <= (total_pcs + 1)\n    return 0;\n}"
+  },
+  {
+    "id": 12,
+    "titlu": "Longest increasing sequence",
+    "etapa": "Judeteana",
+    "cerinta": "Găsirea celei mai lungi secvențe de numere consecutive crescătoare dintr-un șir.",
+    "cod": "#include <iostream>\nusing namespace std;\nint main() {\n    int n, a[1001], lmax=1, imax=1, lc=1, ic=1;\n    cin >> n;\n    for(int i=1; i<=n; i++) cin >> a[i];\n    for(int i=2; i<=n; i++) {\n        if(a[i] >= a[i-1]) lc++;\n        else { \n            if(lc > lmax) { lmax=lc; imax=ic; } \n            lc=1; ic=i; \n        }\n    }\n    if(lc > lmax) { lmax=lc; imax=ic; }\n    for(int i=imax; i<imax+lmax; i++) cout << a[i] << \" \";\n    return 0;\n}"
+  },
+  {
+    "id": 13,
+    "titlu": "TicTacTiny",
+    "etapa": "Judeteana",
+    "cerinta": "Implementarea unui motor de Tic-Tac-Toe ultra-minimalist sub 530 bytes.",
+    "cod": "#include <stdio.h>\nint b[10],m,p,k,c;int W(){int r[]={1,2,3,4,5,6,7,8,9,1,4,7,2,5,8,3,6,9,1,5,9,3,5,7},s;for(s=0;s<24;s+=3)if(b[r[s]]&&b[r[s]]==b[r[s+1]]&&b[r[s]]==b[r[s+2]])return b[r[s]];return 0;}int main(){for(k=0;k<9;k++){if(scanf(\"%d\",&m)<1)break;p=3*(m/10-1)+m%10;if(b[p]){putchar('E');return 0;}b[p]=k%2?48:120;if(c=W()){putchar(c);return 0;}}putchar('-');return 0;}"
+  },
+  {
+    "id": 14,
+    "titlu": "Beautiful Diamond",
+    "etapa": "Judeteana",
+    "cerinta": "Accesarea membrilor în ierarhii multiple de clase pentru a evita ambiguitatea Diamond Problem fără virtual inheritance.",
+    "cod": "#include <iostream>\nusing namespace std;\nstruct A { int x = 1; };\nstruct B : A { int y = 2; };\nstruct C : A { int y = 3; };\nstruct D : B, C { int x = 4; };\nint main() {\n    D d;\n    cout << d.B::x << \"\\n\" << sizeof(D)/4 << \"\\n\" << d.B::A::x << \"\\n\" << d.B::y << \"\\n\" << d.C::A::x << \"\\n\" << d.C::y << endl;\n    return 0;\n}"
+  },
+  {
+    "id": 15,
+    "titlu": "Expression Evaluator",
+    "etapa": "Judeteana",
+    "cerinta": "Evaluarea expresiilor prefixate folosind Abstract Syntax Tree (AST) și pattern-ul Visitor.",
+    "cod": "#include <iostream>\n#include <string>\n#include <vector>\nusing namespace std;\n// Structura nodurilor AST si implementare Visitor pentru Addition, Multiplication, Literal.\nint main() {\n    // Parsare recursiva a token-urilor pentru a construi arborele si vizitarea acestuia.\n    return 0;\n}"
+  },
+  {
+    "id": 16,
+    "titlu": "HackerRot",
+    "etapa": "Judeteana",
+    "cerinta": "Exploatarea Buffer Overflow pentru a redirecționa execuția către funcția auto_destruct.",
+    "cod": "#include \"castor.h\"\n#include <cstring>\nint main() {\n    size_t addr = get_func_address(\"auto_destruct\");\n    char p[100]; \n    memset(p, 'A', 64);\n    memcpy(p + 64, &addr, sizeof(addr));\n    p[64 + sizeof(addr)] = 0;\n    AttackData *bd = create_attack_data();\n    set_attack_data(bd, p);\n    start_attack(bd);\n    return 0;\n}"
+  }
+]

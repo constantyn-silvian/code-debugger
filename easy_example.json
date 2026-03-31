@@ -1,0 +1,98 @@
+[
+  {
+    "id": 1,
+    "titlu": "Digit Chief",
+    "categorie": "Locala",
+    "cerinta": "Calculează cifra de control a unui număr n prin adunarea repetată a cifrelor sale până când se obține o singură cifră.",
+    "exemple": { "input": "195", "output": "6", "explicatie": "1+9+5=15, apoi 1+5=6" },
+    "cod": "#include <iostream>\nusing namespace std;\n\nint cifraControl(int n)\n{\n    int s;\n    while (n > 9)\n    {\n        s = 0;\n        while (n != 0)\n        {\n            s = s + n % 10;\n            n = n / 10;\n        }\n        n = s;\n    }\n    return n;\n}\n\nint main()\n{\n    int n;\n    cin >> n;\n    cout << cifraControl(n);\n    return 0;\n}"
+  },
+  {
+    "id": 2,
+    "titlu": "Loterie",
+    "categorie": "Locala",
+    "cerinta": "Afișează toate numerele prime dintr-un interval [a, b].",
+    "exemple": { "input": "10 20", "output": "11 13 17 19" },
+    "cod": "#include <iostream>\nusing namespace std;\n\nbool estePrim(int n)\n{\n    if (n < 2) return false;\n    for (int d = 2; d * d <= n; d++)\n        if (n % d == 0) return false;\n    return true;\n}\n\nvoid afisareNumerePrime(int a, int b)\n{\n    for (int i = a; i <= b; i++)\n        if (estePrim(i)) cout << i << \" \";\n}\n\nint main()\n{\n    int a, b;\n    cin >> a >> b;\n    afisareNumerePrime(a, b);\n    return 0;\n}"
+  },
+  {
+    "id": 3,
+    "titlu": "Matrice Sum",
+    "categorie": "Locala",
+    "cerinta": "Calculează suma tuturor elementelor dintr-o matrice n x m.",
+    "exemple": { "input": "2 2\n1 2\n3 4", "output": "10" },
+    "cod": "#include <iostream>\nusing namespace std;\n\nint main()\n{\n    int n, m, x[105][105], sum = 0;\n    cin >> n >> m;\n    for (int i = 1; i <= n; i++)\n        for (int j = 1; j <= m; j++) cin >> x[i][j];\n    for (int i = 1; i <= n; i++)\n        for (int j = 1; j <= m; j++) sum += x[i][j];\n    cout << sum;\n    return 0;\n}"
+  },
+  {
+    "id": 4,
+    "titlu": "Num_Product",
+    "categorie": "Locala",
+    "cerinta": "Produsul a trei numere folosind o funcție.",
+    "exemple": { "input": "2 3 4", "output": "24" },
+    "cod": "#include <iostream>\nusing namespace std;\n\nint produs(int a, int b, int c) { return a * b * c; }\n\nint main()\n{\n    int a, b, c;\n    cin >> a >> b >> c;\n    cout << produs(a, b, c);\n    return 0;\n}"
+  },
+  {
+    "id": 5,
+    "titlu": "DoubleTrouble",
+    "categorie": "Locala",
+    "cerinta": "Înmulțește elementele unei matrice cu 2.",
+    "exemple": { "input": "1 2\n5 10", "output": "10 20" },
+    "cod": "#include <iostream>\nusing namespace std;\n\nint main()\n{\n    int n, m, x[1001][1001];\n    cin >> n >> m;\n    for (int i = 1; i <= n; i++)\n        for (int j = 1; j <= m; j++) cin >> x[i][j];\n    for (int i = 1; i <= n; i++) {\n        for (int j = 1; j <= m; j++) cout << x[i][j] * 2 << \" \";\n        cout << endl;\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 6,
+    "titlu": "Collatz",
+    "categorie": "Locala",
+    "cerinta": "Generează secvența Collatz (n/2 dacă e par, 3n+1 dacă e impar).",
+    "exemple": { "input": "6", "output": "6 3 10 5 16 8 4 2 1" },
+    "cod": "#include <iostream>\nusing namespace std;\n\nvoid collatz(long long n) {\n    while (n != 1) {\n        if (n % 2 == 0) n /= 2; else n = 3 * n + 1;\n        cout << \" \" << n;\n    }\n}\n\nint main() {\n    long long n; cin >> n; cout << n; collatz(n); return 0;\n}"
+  },
+  {
+    "id": 7,
+    "titlu": "Bank",
+    "categorie": "Locala",
+    "cerinta": "Simulează transferul între conturi bancare.",
+    "exemple": { "input": "Ion 100 Vasile 50 30", "output": "70\n80" },
+    "cod": "#include <iostream>\nusing namespace std;\nstruct Account { char owner[50]; double balance; };\nvoid transfer(Account &from, Account &to, double amount) {\n    if (from.balance >= amount) { from.balance -= amount; to.balance += amount; }\n}\nint main() {\n    Account a1, a2; double amt; cin >> a1.owner >> a1.balance >> a2.owner >> a2.balance >> amt;\n    transfer(a1, a2, amt); cout << a1.balance << endl << a2.balance;\n    return 0;\n}"
+  },
+  {
+    "id": 8,
+    "titlu": "No Strings Attached",
+    "categorie": "Locala",
+    "cerinta": "Prelucrarea șirurilor de caractere (strstr, strcat, tolower).",
+    "exemple": { "input": "Salut lume\nlume\n frumoasa\nTest\ne", "output": "Tist" },
+    "cod": "#include <iostream>\n#include <cstring>\nusing namespace std;\nint main() {\n    char s1[200], s2[100], s3[100], s4[300], def; cin.getline(s1, 200); cin.getline(s2, 100); cin.getline(s3, 100); cin.getline(s4, 300); cin >> def;\n    char *p = strstr(s1, s2); if (p) { strcat(s4, s3); }\n    for (int i = 0; s4[i]; i++) if (s4[i] == def) s4[i] = tolower(s4[i]);\n    cout << s4; return 0;\n}"
+  },
+  {
+    "id": 9,
+    "titlu": "WrongData",
+    "categorie": "Locala",
+    "cerinta": "Transpusa unei matrice n x m.",
+    "exemple": { "input": "3 2\n1 2\n3 4\n5 6", "output": "1 3 5\n2 4 6" },
+    "cod": "#include <iostream>\nusing namespace std;\nint main() {\n    int n, m, mat[101][101]; cin >> n >> m;\n    for (int i = 1; i <= n; i++) for (int j = 1; j <= m; j++) cin >> mat[i][j];\n    for (int j = 1; j <= m; j++) {\n        for (int i = 1; i <= n; i++) cout << mat[i][j] << \" \";\n        cout << endl;\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 10,
+    "titlu": "Num_Sum",
+    "categorie": "Locala",
+    "cerinta": "Suma a două numere naturale mari.",
+    "exemple": { "input": "5 7", "output": "12" },
+    "cod": "#include <iostream>\nusing namespace std;\nint main() { long long a, b; cin >> a >> b; cout << a + b; return 0; }"
+  },
+  {
+    "id": 11,
+    "titlu": "Medii",
+    "categorie": "Locala",
+    "cerinta": "Calculează mediile elevilor și le sortează descrescător.",
+    "exemple": { "input": "2 3\n10 10 10\n5 6 7", "output": "10.00 6.00" },
+    "cod": "#include <iostream>\n#include <iomanip>\n#include <algorithm>\nusing namespace std;\nint main() {\n    int n, m; double med[30]; cin >> n >> m;\n    for (int i = 0; i < n; i++) {\n        int s = 0, x; for (int j = 0; j < m; j++) { cin >> x; s += x; }\n        med[i] = (double)s / m;\n    }\n    sort(med, med + n, greater<double>());\n    for (int i = 0; i < n; i++) cout << fixed << setprecision(2) << med[i] << \" \";\n    return 0;\n}"
+  },
+  {
+    "id": 12,
+    "titlu": "Teren",
+    "categorie": "Locala",
+    "cerinta": "Simulează semănatul pe un teren cu ziduri.",
+    "exemple": { "input": "5\n1\n3\n1\n10 2", "output": "9 10 -1 0 0" },
+    "cod": "#include <iostream>\nusing namespace std;\nint main() {\n    int L, Z, zid, M, P, T, t[10005] = {0}; bool z[10005] = {0};\n    cin >> L >> Z; for (int i = 0; i < Z; i++) { cin >> zid; z[zid] = 1; }\n    cin >> M; for (int i = 0; i < M; i++) {\n        cin >> P >> T; if (z[T]) continue;\n        for (int d = 0; d < P; d++) {\n            if (T - d >= 1 && !z[T - d]) t[T - d] += (P - d); else break;\n        }\n        for (int d = 1; d < P; d++) {\n            if (T + d <= L && !z[T + d]) t[T + d] += (P - d); else break;\n        }\n    }\n    for (int i = 1; i <= L; i++) cout << (z[i] ? -1 : t[i]) << \" \";\n    return 0;\n}"
+  }
+]

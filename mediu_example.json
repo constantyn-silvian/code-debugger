@@ -1,0 +1,102 @@
+[
+  {
+    "id": 1,
+    "etapa": "Judeteana",
+    "titlu": "No More 67",
+    "cerinta": "Marcel a primit o tema: sa scrie un program care citeste un numar n si afiseaza de n ori mesajul 'The 6 7 jokes aren't funny'. Codul lui intra in bucla infinita. Repara functia recursiva pentru a respecta conditia de oprire. Restrictii: 0 <= n <= 1000.",
+    "exemple": {
+      "input": "3",
+      "output": "The 6 7 jokes aren't funny\nThe 6 7 jokes aren't funny\nThe 6 7 jokes aren't funny"
+    },
+    "cod": "#include <iostream>\n\nusing namespace std;\n\nvoid recursive_print(int n) {\n    if (n <= 0) {\n        return;\n    }\n    cout << \"The 6 7 jokes aren't funny\" << endl;\n    recursive_print(n - 1);\n}\n\nint main() {\n    int n;\n    if (cin >> n) {\n        recursive_print(n);\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 2,
+    "etapa": "Judeteana",
+    "titlu": "Headline Hunter",
+    "cerinta": "Determina numarul de aparitii ale unor cuvinte cheie intr-un text dat. Se citeste n, apoi n cuvinte, apoi un text. Afisarea se face in format 'cuvant: numar'.",
+    "exemple": {
+      "input": "2\napple\nbanana\nan apple a day keeps the doctor away banana is yellow",
+      "output": "apple: 1\nbanana: 1"
+    },
+    "cod": "#include <iostream>\n#include <cstring>\n\nusing namespace std;\n\nint main() {\n    int n;\n    if (!(cin >> n)) return 0;\n    char words[105][55];\n    int counts[105] = {0};\n    for (int i = 0; i < n; i++) cin >> words[i];\n    cin.get();\n    char text[1005];\n    if (!cin.getline(text, 1005)) return 0;\n    char *token = strtok(text, \" \\n\\r\\t\");\n    while (token != NULL) {\n        for (int i = 0; i < n; i++) {\n            if (strcmp(token, words[i]) == 0) counts[i]++;\n        }\n        token = strtok(NULL, \" \\n\\r\\t\");\n    }\n    for (int i = 0; i < n; i++) cout << words[i] << \": \" << counts[i] << endl;\n    return 0;\n}"
+  },
+  {
+    "id": 3,
+    "etapa": "Judeteana",
+    "titlu": "Votefellas",
+    "cerinta": "Sistem de vot Instant Runoff Voting (IRV). Daca niciun candidat nu are >50%, cel mai slab e eliminat si voturile redistribuite. Include validare checksum pentru codul de bare al buletinului.",
+    "exemple": {
+      "input": "3 3\nA B C\n1111-2222-3333-2 A B C\n4444-5555-6666-0 B A C\n7777-8888-9999-8 C B A",
+      "output": "A"
+    },
+    "cod": "#include <iostream>\n#include <string>\n#include <vector>\n#include <map>\n#include <algorithm>\n\nusing namespace std;\n\nstruct Ballot { vector<int> prefs; };\n\nbool isValid(string c) {\n    if (c.length() != 15) return false;\n    int sum = 0, count = 0;\n    for (int i = 0; i < 14; i++) {\n        if (isdigit(c[i])) {\n            int d = c[i] - '0';\n            count++;\n            sum += (count % 2 != 0) ? d * 3 : d;\n        }\n    }\n    return ((10 - (sum % 10)) % 10) == (c[14] - '0');\n}\n\nint main() {\n    int numC, numB; cin >> numC >> numB;\n    vector<string> names(numC);\n    map<string, int> nameToIndex;\n    for (int i = 0; i < numC; i++) { cin >> names[i]; nameToIndex[names[i]] = i; }\n    vector<Ballot> ballots;\n    for (int i = 0; i < numB; i++) {\n        string code; cin >> code;\n        bool valid = isValid(code);\n        Ballot b;\n        for (int j = 0; j < numC; j++) {\n            string p; cin >> p;\n            if (valid) b.prefs.push_back(nameToIndex[p]);\n        }\n        if (valid) ballots.push_back(b);\n    }\n    vector<bool> eliminated(numC, false);\n    while (true) {\n        vector<int> votes(numC, 0);\n        for (auto &b : ballots) {\n            for (int p : b.prefs) {\n                if (!eliminated[p]) { votes[p]++; break; }\n            }\n        }\n        int total = ballots.size(), winner = -1, minVotes = total + 1, loser = -1;\n        for (int i = 0; i < numC; i++) {\n            if (!eliminated[i]) {\n                if (votes[i] > total / 2) winner = i;\n                if (votes[i] < minVotes) { minVotes = votes[i]; loser = i; }\n            }\n        }\n        if (winner != -1) { cout << names[winner] << endl; break; }\n        eliminated[loser] = true;\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 4,
+    "etapa": "Judeteana",
+    "titlu": "Stack",
+    "cerinta": "Implementarea unei stive dinamice folosind liste simplu inlantuite cu operatii avansate: push, pop, reverse, moveToTop(k) si rotate(k).",
+    "exemple": {
+      "input": "2 10\n2 20\n10",
+      "output": "20 10"
+    },
+    "cod": "#include <iostream>\nusing namespace std;\nstruct Node { int val; Node* next; };\nstruct Stack {\n    Node* top = nullptr;\n    void push(int x) { Node* n = new Node{x, top}; top = n; }\n    void pop() { if(top) { Node* t = top; top = top->next; delete t; } }\n    void reverse() {\n        Node *prev = nullptr, *curr = top, *next;\n        while(curr) { next = curr->next; curr->next = prev; prev = curr; curr = next; }\n        top = prev;\n    }\n    void print() {\n        Node* c = top; while(c) { cout << c->val << (c->next ? \" \" : \"\"); c = c->next; } cout << endl;\n    }\n};\nint main() {\n    Stack s; int op, val; while(cin >> op) {\n        if(op == 2) { cin >> val; s.push(val); }\n        else if(op == 10) s.print();\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 5,
+    "etapa": "Judeteana",
+    "titlu": "Fast Expo",
+    "cerinta": "Calculul eficient A^p folosind exponentiere rapida O(log p).",
+    "exemple": { "input": "5 8", "output": "390625" },
+    "cod": "#include <iostream>\nusing namespace std;\nlong long fe(long long a, long long p) {\n    if(p == 0) return 1;\n    long long h = fe(a, p/2);\n    if(p % 2 == 0) return h * h;\n    return a * h * h;\n}\nint main() {\n    long long a, p; cin >> a >> p; cout << fe(a, p) << endl;\n    return 0;\n}"
+  },
+  {
+    "id": 6,
+    "etapa": "Judeteana",
+    "titlu": "A2D2",
+    "cerinta": "Algoritmul Lee pentru drum minim in labirint. Ordine: Jos, Sus, Dreapta, Stanga.",
+    "exemple": { "input": "4 5 ... 2 3 1 4", "output": "11\\n2 3\\n..." },
+    "cod": "#include <iostream>\n#include <queue>\n#include <vector>\n#include <algorithm>\nusing namespace std;\nint dx[]={1,-1,0,0}, dy[]={0,0,1,-1};\nint main() {\n    int n,m; cin>>n>>m;\n    vector<vector<int>> g(n+1,vector<int>(m+1)), d(n+1,vector<int>(m+1,0));\n    vector<vector<pair<int,int>>> pr(n+1,vector<pair<int,int>>(m+1));\n    for(int i=1;i<=n;i++)for(int j=1;j<=m;j++)cin>>g[i][j];\n    int xs,ys,xf,yf; cin>>xs>>ys>>xf>>yf;\n    queue<pair<int,int>> q; q.push({xs,ys}); d[xs][ys]=1;\n    while(!q.empty()){\n        auto c = q.front(); q.pop();\n        if(c.first==xf && c.second==yf) break;\n        for(int i=0;i<4;i++){\n            int nx=c.first+dx[i], ny=c.second+dy[i];\n            if(nx>=1&&nx<=n&&ny>=1&&ny<=m&&g[nx][ny]==0&&d[nx][ny]==0){\n                d[nx][ny]=d[c.first][c.second]+1; pr[nx][ny]=c; q.push({nx,ny});\n            }\n        }\n    }\n    if(!d[xf][yf]) cout<<\"Nu exista drum!\";\n    else {\n        cout<<d[xf][yf]<<endl;\n        vector<pair<int,int>> p; for(pair<int,int> c={xf,yf}; c!=make_pair(0,0); c=pr[c.first][c.second]) p.push_back(c);\n        reverse(p.begin(),p.end()); for(auto i:p) cout<<i.first<<\" \"<<i.second<<endl;\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 7,
+    "etapa": "Judeteana",
+    "titlu": "Bit Key",
+    "cerinta": "Verificare acces securizat prin operatii pe biti si queries de setare biti.",
+    "exemple": { "input": "63 32 4 0 1 2 3", "output": "Wrong bit at position 4\\nAccess denied" },
+    "cod": "#include <iostream>\nusing namespace std;\nint main() {\n    unsigned int k, u; int q, p; cin>>k>>u>>q;\n    while(q--) { cin>>p; u|=(1U<<p); }\n    bool ok=true;\n    for(int i=0;i<32;i++) if((k&(1U<<i)) && !(u&(1U<<i))) { cout<<\"Wrong bit at position \"<<i<<endl; ok=false; }\n    if(ok) cout<<\"All bits are correct\\nAccess granted\";\n    else cout<<\"Access denied\";\n    return 0;\n}"
+  },
+  {
+    "id": 8,
+    "etapa": "Judeteana",
+    "titlu": "Hamming Codes",
+    "cerinta": "Corectare matrice n x m folosind sume de control (linii/coloane) cu vot majoritar.",
+    "exemple": { "input": "3 4 ...", "output": "Mesajul a fost compromis si a fost corectat" },
+    "cod": "#include <iostream>\n#include <vector>\nusing namespace std;\nlong long maj(long long a, long long b, long long c) { return (a==b||a==c)?a:b; }\nint main() {\n    int n,m; cin>>n>>m; vector<vector<int>> a(n+1,vector<int>(m+1));\n    for(int i=1;i<=n;i++)for(int j=1;j<=m;j++)cin>>a[i][j];\n    vector<long long> sl(n+1), sc(m+1); \n    long long c1,c2,c3; for(int i=1;i<=n;i++){cin>>c1>>c2>>c3; sl[i]=maj(c1,c2,c3);}\n    for(int j=1;j<=m;j++){cin>>c1>>c2>>c3; sc[j]=maj(c1,c2,c3);}\n    vector<int> el, ec; \n    for(int i=1;i<=n;i++){long long s=0;for(int j=1;j<=m;j++)s+=a[i][j]; if(s!=sl[i])el.push_back(i);}\n    for(int j=1;j<=m;j++){long long s=0;for(int i=1;i<=n;i++)s+=a[i][j]; if(s!=sc[j])ec.push_back(j);}\n    if(el.empty()&&ec.empty()) cout<<\"Mesajul nu a fost compromis\";\n    else if(el.size()>1&&ec.size()>1) cout<<\"Mesajul a fost compromis si nu a putut fi corectat\";\n    else {\n        cout<<\"Mesajul a fost compromis si a fost corectat\"<<endl;\n        for(int i:el)for(int j:ec) {\n            long long cur=0; for(int k=1;k<=n;k++)if(k!=i)cur+=a[k][j]; a[i][j]=sc[j]-cur;\n        }\n    }\n    for(int i=1;i<=n;i++){for(int j=1;j<=m;j++)cout<<a[i][j]<<\" \";cout<<endl;}\n    return 0;\n}"
+  },
+  {
+    "id": 9,
+    "etapa": "Judeteana",
+    "titlu": "Kernel",
+    "cerinta": "Convolutie cu kernel 3x3 si limitare valori in [0, max_val].",
+    "exemple": { "input": "2 2 100\\n1 2\\n3 4", "output": "2 2 100\\n0 5\\n10 15" },
+    "cod": "#include <iostream>\n#include <vector>\nusing namespace std;\nint main() {\n    int r,c,mv; cin>>r>>c>>mv; vector<vector<int>> a(r,vector<int>(c));\n    for(int i=0;i<r;i++)for(int j=0;j<c;j++)cin>>a[i][j];\n    cout<<r<<\" \"<<c<<\" \"<<mv<<endl;\n    for(int i=0;i<r;i++){\n        for(int j=0;j<c;j++){\n            long long v=5LL*a[i][j];\n            if(i>0)v-=a[i-1][j]; if(i<r-1)v-=a[i+1][j];\n            if(j>0)v-=a[i][j-1]; if(j<c-1)v-=a[i][j+1];\n            if(v<0)v=0; if(v>mv)v=mv; cout<<v<<\" \";\n        }cout<<endl;\n    }\n    return 0;\n}"
+  },
+  {
+    "id": 10,
+    "etapa": "Judeteana",
+    "titlu": "Alan Wake",
+    "cerinta": "Cauta drumul minim in doua dimensiuni (3D BFS) cu numar limitat de teleportari.",
+    "exemple": { "input": "4\\n10 3 ...", "output": "11" },
+    "cod": "#include <iostream>\n#include <queue>\n#include <vector>\nusing namespace std;\nstruct P { int z,x,y; };\nint main() {\n    int sw,n,m; cin>>sw>>n>>m;\n    int g[16][51][51], d[16][51][51];\n    for(int z=0;z<2;z++)for(int i=0;i<n;i++)for(int j=0;j<m;j++)cin>>g[z][i][j];\n    int sx,sy,tx,ty; cin>>sx>>sy>>tx>>ty;\n    for(int z=0;z<=sw;z++)for(int i=0;i<n;i++)for(int j=0;j<m;j++)d[z][i][j]=-1;\n    queue<P> q; q.push({0,sx,sy}); d[0][sx][sy]=0;\n    int dx[]={0,0,1,-1}, dy[]={1,-1,0,0};\n    while(!q.empty()){\n        P c=q.front(); q.pop();\n        if(c.z%2==0 && c.x==tx && c.y==ty) { cout<<d[c.z][c.x][c.y]; return 0; }\n        for(int i=0;i<4;i++){\n            int nx=c.x+dx[i], ny=c.y+dy[i];\n            if(nx>=0&&nx<n&&ny>=0&&ny<m&&g[c.z%2][nx][ny]==0&&d[c.z][nx][ny]==-1){\n                d[c.z][nx][ny]=d[c.z][c.x][c.y]+1; q.push({c.z,nx,ny});\n            }\n        }\n        if(c.z<sw && g[(c.z+1)%2][c.x][c.y]==0 && d[c.z+1][c.x][c.y]==-1){\n            d[c.z+1][c.x][c.y]=d[c.z][c.x][c.y]+1; q.push({c.z+1,c.x,c.y});\n        }\n    }\n    cout<<-1; return 0;\n}"
+  },
+  {
+    "id": 11,
+    "etapa": "Judeteana",
+    "titlu": "yzziD",
+    "cerinta": "Verificare rapida a produsului a doua matrici O(n^2) folosind algoritmul lui Freivalds.",
+    "exemple": { "input": "3 ...", "output": "1" },
+    "cod": "#include <iostream>\n#include <vector>\nusing namespace std;\nint main() {\n    int n; cin>>n; vector<vector<int>> a(n,vector<int>(n)), b(n,vector<int>(n)), c(n,vector<int>(n));\n    for(int i=0;i<n;i++)for(int j=0;j<n;j++)cin>>a[i][j];\n    for(int i=0;i<n;i++)for(int j=0;j<n;j++)cin>>b[i][j];\n    for(int i=0;i<n;i++)for(int j=0;j<n;j++)cin>>c[i][j];\n    vector<long long> r={1,2,3}, br(n,0), abr(n,0), cr(n,0);\n    for(int i=0;i<n;i++)for(int j=0;j<n;j++)br[i]+=b[i][j]*(j<3?r[j]:1);\n    for(int i=0;i<n;i++)for(int j=0;j<n;j++)abr[i]+=a[i][j]*br[j];\n    for(int i=0;i<n;i++)for(int j=0;j<n;j++)cr[i]+=c[i][j]*(j<3?r[j]:1);\n    for(int i=0;i<n;i++)if(abr[i]!=cr[i]){cout<<0; return 0;} cout<<1; return 0;\n}"
+  }
+]

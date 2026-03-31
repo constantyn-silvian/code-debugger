@@ -1,149 +1,206 @@
-const getModel = () => {
-  const saved = localStorage.getItem("gemini_model") || "gemini-2.5-flash";
-  return saved.startsWith("gemini-") ? saved : "gemini-2.5-flash";
-};
-const GEMINI_URL = (key, model) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+// ─── Runner: Judge0 (compilator real GCC) + fallback Gemini ──────────────────
+//
+// Judge0 CE public instance: https://ce.judge0.com  (gratuit, fara cheie, ~100 req/zi)
+// RapidAPI Judge0:            https://judge0-ce.p.rapidapi.com  (cheie RapidAPI, 50 req/zi)
+//
+// Fluxul:
+//  1. La generare: Gemini produce cerinta + correctCode + buggyCode
+//  2. Runner compileaza correctCode pe Judge0, ruleaza pe inputurile generate de Gemini
+//     => obtine expected outputs REALE (nu simulate)
+//  3. La Submit: compileaza codul userului, ruleaza pe aceleasi inputuri, compara cu expected
 
-async function callGemini(apiKey, prompt, maxTokens = 2048) {
-  const model = getModel();
-  const resp = await fetch(GEMINI_URL(apiKey, model), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.0, maxOutputTokens: maxTokens },
-    }),
-  });
-  if (!resp.ok) {
-    let body = {};
-    try { body = await resp.json(); } catch {}
-    const msg = body?.error?.message || `HTTP ${resp.status}`;
-    if (resp.status === 429) throw new Error("Rate limit. Încearcă din nou în câteva secunde.");
-    throw new Error("Gemini error: " + msg);
+const J0_LANG = 54; // C++ GCC 9.2.0
+
+function j0Config() {
+  const key  = localStorage.getItem("judge0_key")  || "";
+  const host = localStorage.getItem("judge0_host") || "https://ce.judge0.com";
+  const useRapid = !!key;
+  return {
+    url: useRapid
+      ? "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
+      : `${host}/submissions?base64_encoded=false&wait=true`,
+    headers: {
+      "Content-Type": "application/json",
+      ...(useRapid ? { "X-RapidAPI-Key": key, "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com" } : {}),
+    },
+  };
+}
+
+async function j0Run(code, input) {
+  const cfg = j0Config();
+  let resp;
+  try {
+    resp = await fetch(cfg.url, {
+      method: "POST",
+      headers: cfg.headers,
+      body: JSON.stringify({
+        language_id: J0_LANG,
+        source_code: code,
+        stdin: input ?? "",
+        cpu_time_limit: 5,
+        memory_limit: 65536,
+      }),
+    });
+  } catch (e) {
+    throw new Error("Nu pot contacta Judge0: " + e.message);
   }
-  const data = await resp.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    if (resp.status === 429) throw new Error("judge0_rate_limit");
+    throw new Error(`Judge0 HTTP ${resp.status}: ${txt.slice(0, 120)}`);
+  }
+
+  const d = await resp.json();
+  const sid = d.status?.id;
+
+  if (sid === 6)       return { ok: false, error: "Eroare compilare:\n" + (d.compile_output || "").trim() };
+  if (sid === 5)       return { ok: false, error: "TLE" };
+  if (sid >= 7)        return { ok: false, error: "Runtime Error: " + (d.stderr || d.status?.description || "").trim() };
+  return { ok: true, output: (d.stdout || "").trim() };
 }
 
-function tag(raw, name) {
-  const m = raw.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`, "i"));
-  return m ? m[1].trim() : "";
-}
-
-function normalize(s) {
+function norm(s) {
   return (s || "").split("\n").map(l => l.trimEnd()).join("\n").trim();
 }
 
-// ─── Evaluare cod pe teste ─────────────────────────────────────────────────────
-// Strategia: dam Gemini SURSA CORECTA + testele + codul userului
-// Gemini calculeaza expected rulând sursa corecta mental (cod simplu, max 30 linii)
-// si compara cu ce produce codul userului
-// Asa expected-ul e calculat din sursa corecta, nu inventat
+// ─── Gemini fallback (daca Judge0 nu e disponibil) ────────────────────────────
+const getModel = () => localStorage.getItem("gemini_model") || "gemini-2.5-flash";
 
+async function geminiFallbackRun(code, input, apiKey) {
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${getModel()}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text:
+          `Executa mental exact acest cod C++ cu inputul dat. Raspunde DOAR cu outputul exact, nimic altceva.
+Cod:\n${code}\nInput:\n${input}`
+        }] }],
+        generationConfig: { temperature: 0.0, maxOutputTokens: 512 },
+      }),
+    }
+  );
+  if (!resp.ok) throw new Error("Gemini fallback error");
+  const d = await resp.json();
+  return (d.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+}
+
+// ─── Export: genereaza expected outputs rulând correctCode pe Judge0 ──────────
+export async function generateExpectedOutputs(problem, apiKey) {
+  if (!problem.tests?.length) return [];
+  const results = [];
+  let useGeminiFallback = false;
+
+  for (const t of problem.tests) {
+    if (!useGeminiFallback) {
+      try {
+        const res = await j0Run(problem.correctCode, t.input);
+        if (res.ok) {
+          results.push({ ...t, expected: res.output });
+        } else if (res.error === "judge0_rate_limit" || res.error?.includes("Nu pot contacta")) {
+          useGeminiFallback = true;
+        } else {
+          // Eroare de compilare sau runtime in correctCode — pastreaza expected-ul vechi
+          results.push(t);
+        }
+      } catch (e) {
+        if (e.message.includes("judge0_rate_limit") || e.message.includes("Nu pot contacta")) {
+          useGeminiFallback = true;
+        } else {
+          results.push(t);
+        }
+      }
+    }
+
+    if (useGeminiFallback && apiKey) {
+      try {
+        const out = await geminiFallbackRun(problem.correctCode, t.input, apiKey);
+        results.push({ ...t, expected: out });
+      } catch {
+        results.push(t);
+      }
+    }
+  }
+  return results;
+}
+
+// ─── Export: ruleaza codul userului si compara cu expected ────────────────────
 export async function runTests(problem, userCode, apiKey, onSaveTests) {
-  if (!apiKey?.trim()) throw new Error("Token Gemini lipsă. Adaugă-l în Settings.");
   if (!userCode?.trim()) throw new Error("Codul este gol.");
 
   let tests = problem.tests || [];
+  if (!tests.length) throw new Error("Niciun test disponibil. Regenerează problema.");
 
-  // Daca nu avem teste salvate, genereaza-le acum cu expected calculat din sursa corecta
-  if (!tests.length) {
-    tests = await generateAndVerifyTests(problem, apiKey);
-    if (onSaveTests) onSaveTests(tests);
+  // Daca testele nu au expected calculat de compilator (au doar cel de la Gemini la generare),
+  // recalculeaza-le cu Judge0 prima data
+  const needsRecompute = tests.some(t => !t.verifiedByCompiler);
+  if (needsRecompute && problem.correctCode) {
+    const recomputed = await generateExpectedOutputs(problem, apiKey);
+    if (recomputed.length === tests.length) {
+      tests = recomputed.map(t => ({ ...t, verifiedByCompiler: true }));
+      if (onSaveTests) onSaveTests(tests);
+    }
   }
 
-  if (!tests.length) throw new Error("Nu s-au putut genera teste. Încearcă din nou.");
+  // Ruleaza codul userului pe fiecare test
+  const results = [];
+  let compileErr = null;
+  let useGeminiFallback = false;
 
-  // Evalueaza codul userului pe teste — un singur request cu toate testele
-  return evaluateUserCode(problem, userCode, tests, apiKey);
-}
+  for (let i = 0; i < tests.length; i++) {
+    const t = tests[i];
 
-// Genereaza teste SI calculeaza expected rulând sursa corecta
-// Sursa corecta vine din problema — e generata de Gemini si e corecta
-async function generateAndVerifyTests(problem, apiKey) {
-  const prompt =
-`Esti un profesor de informatica care creaza teste pentru o problema C++.
+    if (!useGeminiFallback) {
+      try {
+        const res = await j0Run(userCode, t.input);
+        if (!res.ok) {
+          if (res.error?.startsWith("Eroare compilare")) {
+            compileErr = res.error;
+            break;
+          }
+          results.push({ input: t.input, expected: t.expected, actual: `[${res.error}]`, passed: false });
+          continue;
+        }
+        const got = norm(res.output);
+        const exp = norm(t.expected);
+        results.push({ input: t.input, expected: t.expected, actual: res.output, passed: got === exp });
+        continue;
+      } catch (e) {
+        if (e.message.includes("judge0_rate_limit") || e.message.includes("Nu pot contacta")) {
+          useGeminiFallback = true;
+        } else {
+          results.push({ input: t.input, expected: t.expected, actual: `[${e.message}]`, passed: false });
+          continue;
+        }
+      }
+    }
 
-PROBLEMA: ${problem.title}
-Cerinta: ${problem.statement?.slice(0, 300)}
-Intrare: ${problem.inputSpec}
-Iesire: ${problem.outputSpec}
-Restrictii: ${problem.constraints}
-
-SURSA C++ CORECTA (ruleaza-o mental pentru a calcula outputul exact):
-${problem.correctCode}
-
-Genereaza 5 teste diverse. Pentru fiecare test:
-1. Alege un input valid conform restrictiilor
-2. Ruleaza mental SURSA C++ CORECTA de mai sus pe acel input
-3. Scrie outputul exact pe care il produce sursa corecta
-
-Teste diverse: valori mici, n=1, valori la limita, valori negative daca are sens, edge case.
-
-Raspunde DOAR cu tag-urile (nimic altceva):
-<T1_IN>input test 1</T1_IN>
-<T1_OUT>output exact al sursei corecte pentru input 1</T1_OUT>
-<T2_IN>input test 2</T2_IN>
-<T2_OUT>output exact al sursei corecte pentru input 2</T2_OUT>
-<T3_IN>input test 3</T3_IN>
-<T3_OUT>output exact al sursei corecte pentru input 3</T3_OUT>
-<T4_IN>input test 4</T4_IN>
-<T4_OUT>output exact al sursei corecte pentru input 4</T4_OUT>
-<T5_IN>input test 5</T5_IN>
-<T5_OUT>output exact al sursei corecte pentru input 5</T5_OUT>`;
-
-  const raw = await callGemini(apiKey, prompt, 2048);
-  const tests = [];
-  for (let i = 1; i <= 5; i++) {
-    const inp = tag(raw, `T${i}_IN`);
-    const out = tag(raw, `T${i}_OUT`);
-    if (inp && out) tests.push({ input: inp, expected: out });
+    // Fallback Gemini
+    if (useGeminiFallback && apiKey) {
+      try {
+        const out = await geminiFallbackRun(userCode, t.input, apiKey);
+        const got = norm(out), exp = norm(t.expected);
+        results.push({ input: t.input, expected: t.expected, actual: out, passed: got === exp });
+      } catch {
+        results.push({ input: t.input, expected: t.expected, actual: "?", passed: false });
+      }
+    }
   }
-  return tests;
-}
 
-// Evalueaza codul userului: Gemini ruleaza mental AMBELE coduri si compara
-async function evaluateUserCode(problem, userCode, tests, apiKey) {
-  const testsBlock = tests.map((t, i) =>
-    `<TEST id="${i+1}">\n<INPUT>${t.input}</INPUT>\n<EXPECTED>${t.expected}</EXPECTED>\n</TEST>`
-  ).join("\n");
-
-  const prompt =
-`Esti un interpret C++ precis. Ai doua surse si trebuie sa determini daca produc acelasi output.
-
-SURSA CORECTA (referinta — outputul ei e cel asteptat):
-${(problem.correctCode || "").slice(0, 1500)}
-
-CODUL STUDENTULUI (de evaluat):
-${userCode.slice(0, 1500)}
-
-TESTE (inputul si outputul asteptat calculat din sursa corecta):
-${testsBlock}
-
-Pentru fiecare test, executa mental CODUL STUDENTULUI cu inputul dat si compara cu EXPECTED.
-Fii foarte precis: verifica fiecare variabila, fiecare bucla, fiecare conditie din codul studentului.
-
-Raspunde EXACT in formatul (nimic altceva):
-<R1><GOT>output exact al codului studentului</GOT><PASS>true</PASS></R1>
-<R2><GOT>output exact al codului studentului</GOT><PASS>false</PASS></R2>
-...etc pentru fiecare test`;
-
-  const raw = await callGemini(apiKey, prompt, 2048);
-
-  const results = tests.map((t, i) => {
-    const n = i + 1;
-    const block = raw.match(new RegExp(`<R${n}>([\\s\\S]*?)<\\/R${n}>`, "i"));
-    if (!block) return { input: t.input, expected: t.expected, actual: "?", passed: false };
-    const got  = tag(block[1], "GOT");
-    const pass = tag(block[1], "PASS").toLowerCase() === "true";
-    // Dubla verificare: compara si noi textual
-    const normGot = normalize(got);
-    const normExp = normalize(t.expected);
-    const actuallyPassed = pass || normGot === normExp;
-    return { input: t.input, expected: t.expected, actual: got || "?", passed: actuallyPassed };
-  });
-
-  if (!results.length) throw new Error("Evaluatorul nu a returnat rezultate. Încearcă din nou.");
+  if (compileErr) throw new Error(compileErr);
+  if (!results.length) throw new Error("Niciun test nu a putut fi rulat.");
   return results;
+}
+
+// Test conexiune Judge0
+export async function testJudge0() {
+  try {
+    const res = await j0Run(`#include<iostream>\nusing namespace std;\nint main(){cout<<42;}`, "");
+    if (res.ok && res.output === "42") return "ok";
+    return res.error || "Output neasteptat: " + res.output;
+  } catch (e) {
+    return "eroare: " + e.message;
+  }
 }
