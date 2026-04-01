@@ -7,46 +7,51 @@ const G_URL = k =>
   `https://generativelanguage.googleapis.com/v1beta/models/${getModel()}:generateContent?key=${k}`;
 
 const SYSTEM_PROMPT = `You are an advanced competitive programming problem generator and controlled bug-injection system.
-Generate C++ problems, correct solutions, test cases, and intentionally buggy solutions. Follow ALL rules strictly.
+Generate problems, correct solutions, test cases, and intentionally buggy solutions. Follow ALL rules strictly.
 
-LANGUAGE: C++ ONLY. ALWAYS include using namespace std; Competitive programming style. Realistic contest code.
+LANGUAGE: C++ ONLY. ALWAYS include using namespace std; Competitive programming style.
 
 PROBLEM TYPE HANDLING:
-- DEBUG / COMPLETE problems: generate ONLY from the user-specified category. Respect it strictly.
-- REIMPLEMENTATION problems: randomly choose a category yourself. User does not choose.
+- DEBUG / COMPLETION: generate ONLY from the user-specified category. Respect strictly.
+- REIMPLEMENTATION: you randomly choose a category. User does NOT select it.
 
-CORRECT SOLUTION: Fully correct C++. MUST pass ALL 5 tests.
+CORRECT SOLUTION: Fully correct C++. MUST pass ALL tests.
 
 BUGGY SOLUTION — HARD REQUIREMENT:
-Buggy solution MUST FAIL ALL TEST CASES. If it passes even ONE test → modify until it fails ALL.
+Buggy solution MUST FAIL ALL TEST CASES. If it passes even ONE → modify until it fails ALL.
 
 Bug rules by difficulty:
 EASY (2-4 bugs): mostly syntax (missing semicolons, wrong operators, typos) + 1-2 small logic bugs
-MEDIUM (4-6 bugs): mix syntax+logic — off-by-one, wrong conditions, incorrect loops — MUST fail ALL tests
-HARD (8+ bugs): complex logic bugs dominate — incorrect algorithms, broken assumptions, edge-case failures, some syntax — MUST fail ALL tests
+MEDIUM (4-6 bugs): mix syntax+logic — off-by-one, wrong conditions, incorrect loops — FAIL ALL tests
+HARD (8+ bugs): complex logic bugs — incorrect algorithms, broken assumptions, edge-case failures — FAIL ALL tests
 
-FORCED FAILURE GUARANTEE (VERY IMPORTANT):
-To ensure buggy fails ALL tests, use these strategies:
-- Wrong core formula or algorithm
-- Always-incorrect condition in main logic
-- Corrupt a key variable used everywhere
-- Break main loop termination or direction
-Then simulate mentally and confirm ALL outputs are wrong. If not → ADD MORE BUGS.
+FORCED FAILURE GUARANTEE:
+To ensure buggy fails ALL tests: break core logic (wrong formula, always-incorrect condition, corrupt key variable, break main loop).
+Simulate mentally. Confirm ALL outputs wrong. If not → ADD MORE BUGS.
 
-BUG DISTRIBUTION: Spread bugs across the code. Never cluster. Make some subtle.
-ANTI-ACCIDENTAL CORRECTNESS: For MEDIUM and HARD, deliberately alter logic AFTER writing correct code.
-NEVER add comments indicating where bugs are.
+BUG DISTRIBUTION: Spread across code. Never cluster. Some must be subtle.
+ANTI-ACCIDENTAL CORRECTNESS: For MEDIUM/HARD, deliberately alter logic AFTER correct version.
 
-TEST CASES: 5 diverse correct tests. Include: n=1, boundary values, all-equal, zero result, normal case.
-Different from examples. Validate each against correct solution. NEVER generate broken tests.
+NO BUG DISCLOSURE (CRITICAL):
+- DO NOT explain bugs anywhere in the code.
+- DO NOT add comments hinting at bugs (no "// bug", "// wrong", "// error", nothing).
+- DO NOT reveal which lines were changed.
+- Buggy code must look like a real (but incorrect) contest submission.
+
+REGENERATION MODE: If user asks to regenerate, keep the problem statement unchanged.
+Only regenerate: test cases + correct solution + buggy solution.
+New tests must still be correct. Correct solution must pass all. Buggy must fail all.
+
+TEST CASES: 5 diverse correct tests. Include: n=1, boundary, all-equal, zero result, normal case.
+Different from examples. Validate each. NEVER generate broken tests.
 
 GENERATION ORDER (STRICT):
-Step 1: Generate problem
+Step 1: Generate problem (or keep existing if regenerating)
 Step 2: Generate correct solution
 Step 3: Generate and validate 5 tests
-Step 4: Inject bugs
-Step 5: Simulate buggy on ALL tests — ensure ALL fail
-Step 6: Output using ONLY the tags from user prompt. No text outside tags.`;
+Step 4: Inject bugs — spread across code, no comments
+Step 5: Simulate buggy on ALL tests — ALL must fail
+Step 6: Output ONLY using the XML/marker tags from user prompt. No text outside tags.`;
 
 async function gemini(apiKey, userPrompt, temp = 0.4) {
   const r = await fetch(G_URL(apiKey), {
@@ -185,22 +190,32 @@ function buildUserPrompt(type, category, difficulty, exclude) {
 @@BUGGY_END@@`;
 
   if (type === "debug") return `Generate a ${D} C++ competitive programming debug problem.
-Category: ${cat}. ${excl}${style}
+STRICT CATEGORY REQUIREMENT: The problem MUST be from the "${cat}" category. Do NOT use any other category.
+${excl}${style}
 
-Follow system prompt steps: correct → tests → inject ${D} bugs → verify bugs fail tests.
+IMPORTANT RULES:
+- Do NOT add any comments in the buggy code that hint at where bugs are (no "// bug here", no "// wrong", nothing).
+- Buggy code must look like a legitimate but incorrect contest submission.
+
+Follow system prompt steps: correct → tests → inject ${D} bugs → verify ALL tests fail.
 5 test cases: include n=1, boundary values, all-equal elements, zero result, normal case.
-Tests must differ from examples. Buggy solution must FAIL most/all tests.
+Tests must differ from examples.
 
 Output ONLY these tags (code between @@ markers, never inside XML):
 ${ioTags}
 ${codeTags}`;
 
   if (type === "complete") return `Generate a ${D} C++ competitive programming problem where student completes missing parts.
-Category: ${cat}. ${excl}${style}
+STRICT CATEGORY REQUIREMENT: The problem MUST be from the "${cat}" category. Do NOT use any other category.
+${excl}${style}
 
-Follow system prompt steps: correct → tests → create incomplete version with TODO comments.
-TODOs: EASY=2-3, MEDIUM=4-5, HARD=5+. Delete significant blocks, not single lines.
-TODO comments: describe WHAT to do, NOT HOW. Incomplete code must fail tests.
+IMPORTANT RULES:
+- TODO comments must describe WHAT to implement, NOT HOW (no algorithm hints).
+- Do NOT reveal the solution approach in any comment.
+- Incomplete code must fail tests (missing logic, not just missing semicolons).
+
+Follow system prompt steps: correct → tests → remove significant blocks → replace with // TODO: description.
+TODOs: EASY=2-3, MEDIUM=4-5, HARD=5+. Delete meaningful logic blocks, not single variables.
 
 Output ONLY these tags (code between @@ markers):
 ${ioTags}
@@ -208,14 +223,18 @@ ${ioTags}
 // complete correct solution
 @@CORRECT_END@@
 @@BUGGY_START@@
-// incomplete version with // TODO: comments
+// incomplete version — significant logic replaced with // TODO: what this section must do
 @@BUGGY_END@@`;
 
-  if (type === "rewrite_lib") return `Generate a ${D} C++ problem about reimplementing stdlib functions with pointers.
+  if (type === "rewrite_lib") return `Generate a ${D} C++ problem about reimplementing standard library functions with pointers.
 ${excl}${style}
 
-Rules: no string.h/cstring/cmath, pure pointer arithmetic (no [] indexing), using namespace std always.
-Steps: correct (all functions) → tests → student version (1-2 examples correct, rest TODO, optionally 1 buggy).
+IMPORTANT RULES:
+- No string.h, cstring, cmath. Pure pointer arithmetic. No [] indexing. using namespace std always.
+- Do NOT add comments hinting at bugs or solutions.
+- Student version must look like a real (incomplete) contest submission.
+
+Steps: correct (all functions) → tests → student version (1-2 correct as examples, rest // TODO, optionally 1 subtle bug).
 Student version must fail tests.
 
 Output ONLY these tags (code between @@ markers):
@@ -224,7 +243,7 @@ ${ioTags}
 // all functions correctly implemented with pointers
 @@CORRECT_END@@
 @@BUGGY_START@@
-// student version: some TODO, optionally 1 subtle bug
+// student version: examples correct, others TODO or subtly buggy
 @@BUGGY_END@@`;
 }
 
@@ -323,4 +342,93 @@ export async function generateNewProblem(apiKey, category, difficulty, problemTy
 
   saveProblem(problem);
   return problem;
+}
+
+// ─── REGENERATE — keeps statement, regenerates code + tests ───────────────────
+export async function regenerateProblem(apiKey, problem, onStatus) {
+  if (!apiKey?.trim()) throw new Error("Token Gemini lipsă. Adaugă-l în Settings.");
+
+  const diff    = DIFFICULTIES[problem.difficulty] || DIFFICULTIES.easy;
+  const catName = problem.category || "General";
+  const type    = problem.problemType || "debug";
+  const D       = problem.difficulty?.toUpperCase() || "EASY";
+
+  // Reuse existing statement — only regenerate code + tests
+  onStatus("1/2 — Regenerare cod și teste...");
+
+  const regenPrompt = `You have this competitive programming problem statement (DO NOT change it):
+
+Title: ${problem.title}
+Statement: ${problem.statement}
+Input: ${problem.inputSpec}
+Output: ${problem.outputSpec}
+Constraints: ${problem.constraints}
+Examples: ${(problem.examples||[]).map(e=>`in="${e.input}" out="${e.output}"`).join(", ")}
+
+Task: Generate a new correct C++ solution and a new buggy/incomplete version for this EXACT problem.
+Type: ${type.toUpperCase()} | Difficulty: ${D} | Category: ${catName}
+${type === "debug" ? `Bug rules: ${D} difficulty from system prompt. Buggy must FAIL ALL tests. No bug-hint comments.` : ""}
+${type === "complete" ? `TODO rules: ${D} difficulty from system prompt. Remove significant logic blocks. No solution hints in comments.` : ""}
+${type === "rewrite_lib" ? `Pointer rules: no string.h/cstring, pure pointer arithmetic, some functions TODO or subtly buggy.` : ""}
+
+Also generate 5 new diverse test cases different from the examples above.
+
+Output ONLY these tags:
+<T1_IN>input</T1_IN><T1_OUT>correct output</T1_OUT>
+<T2_IN>input</T2_IN><T2_OUT>correct output</T2_OUT>
+<T3_IN>input</T3_IN><T3_OUT>correct output</T3_OUT>
+<T4_IN>input</T4_IN><T4_OUT>correct output</T4_OUT>
+<T5_IN>input</T5_IN><T5_OUT>correct output</T5_OUT>
+@@CORRECT_START@@
+// correct C++ solution
+@@CORRECT_END@@
+@@BUGGY_START@@
+// buggy/incomplete version
+@@BUGGY_END@@`;
+
+  let raw;
+  try { raw = await gemini(apiKey, regenPrompt, 0.4); }
+  catch (e) { throw new Error(e.message); }
+
+  const extractMarked = (startMark, endMark) => {
+    const si = raw.indexOf(startMark), ei = raw.indexOf(endMark);
+    if (si !== -1 && ei > si) {
+      const c = raw.slice(si + startMark.length, ei).trim();
+      if (c.includes("main") || c.includes("#include")) return c;
+    }
+    return "";
+  };
+
+  let correctCode = extractMarked("@@CORRECT_START@@", "@@CORRECT_END@@");
+  let buggyCode   = extractMarked("@@BUGGY_START@@",   "@@BUGGY_END@@");
+  if (!correctCode) correctCode = extractCode(raw);
+  if (!buggyCode)   buggyCode   = correctCode;
+  if (!correctCode) throw new Error("Gemini nu a returnat codul C++.\n" + raw.slice(0, 300));
+
+  const tests = [];
+  for (let i = 1; i <= 5; i++) {
+    const inp = tag(raw, `T${i}_IN`), out = tag(raw, `T${i}_OUT`);
+    if (inp && out) tests.push({ input: inp, expected: out, verifiedByCompiler: false });
+  }
+
+  // Verify expected with Judge0 if available
+  if (tests.length > 0) {
+    onStatus("2/2 — Verificare teste cu compilatorul...");
+    try {
+      const { generateExpectedOutputs } = await import("./runner.js");
+      const verified = await generateExpectedOutputs({ correctCode, tests }, apiKey);
+      if (verified.length === tests.length) {
+        for (let i = 0; i < tests.length; i++) {
+          if (verified[i].expected !== "") {
+            tests[i].expected = verified[i].expected;
+            tests[i].verifiedByCompiler = true;
+          }
+        }
+      }
+    } catch (e) { console.warn("Judge0 indisponibil:", e.message); }
+  }
+
+  const updated = { ...problem, correctCode, buggyCode, tests, solved: false };
+  updateProblem(problem.id, { correctCode, buggyCode, tests, solved: false });
+  return updated;
 }

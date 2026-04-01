@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { updateProblem } from "../utils/storage";
+import { updateProblem, regenerateProblem } from "../utils/storage";
 import { runTests } from "../utils/runner";
 import "./DebugPage.css";
 
@@ -154,6 +154,10 @@ export default function DebugPage({ problem, onBack, onSettings, geminiKey }) {
   const [hint, setHint]         = useState("");
   const [hintLoading, setHintLoading] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError]   = useState("");
+  const [regenStatus, setRegenStatus] = useState("");
+  const [revealedTests, setRevealedTests] = useState({});
   const textareaRef  = useRef(null);
   const highlightRef = useRef(null);
 
@@ -224,6 +228,26 @@ Da un HINT scurt (max 2 propozitii) care orienteaza studentul spre bug fara sa i
     setHintLoading(false);
   };
 
+  const handleRegenerate = async () => {
+    if (!geminiKey) { setRegenError("Adaugă token Gemini în Settings."); return; }
+    setRegenerating(true); setRegenError(""); setResults(null); setRevealedTests({});
+    try {
+      const updated = await regenerateProblem(geminiKey, problem, setRegenStatus);
+      // Update code in editor with new buggy code
+      setCode(updated.buggyCode || updated.correctCode || "");
+      // Force re-render with new tests by updating problem ref
+      problem.tests       = updated.tests;
+      problem.correctCode = updated.correctCode;
+      problem.buggyCode   = updated.buggyCode;
+      problem.solved      = false;
+      setRegenStatus("");
+    } catch (e) { setRegenError(e.message); setRegenStatus(""); }
+    setRegenerating(false);
+  };
+
+  const toggleRevealTest = (i) =>
+    setRevealedTests(prev => ({ ...prev, [i]: !prev[i] }));
+
   const passed    = results ? results.filter(r => r.passed).length : 0;
   const total     = results?.length || 0;
   const allPassed = results && total > 0 && passed === total;
@@ -245,6 +269,19 @@ Da un HINT scurt (max 2 propozitii) care orienteaza studentul spre bug fara sa i
             <span className="debug-problem-name">{problem.title}</span>
           </div>
           <span className="debug-type-badge">{typeLabel}</span>
+        </div>
+        <div className="debug-regen-area">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleRegenerate}
+            disabled={regenerating}
+            title="Regenerează codul și testele păstrând cerința"
+          >
+            {regenerating
+              ? <><span className="spinner" style={{width:12,height:12,flexShrink:0}}/> {regenStatus || "Regenerare..."}</>
+              : "↺ Regenerează"}
+          </button>
+          {regenError && <span className="regen-error">{regenError}</span>}
         </div>
         <div className="debug-header-right">
           {problem.solved && <span className="solved-badge">✓ Rezolvată</span>}
@@ -298,9 +335,45 @@ Da un HINT scurt (max 2 propozitii) care orienteaza studentul spre bug fara sa i
           {activeTab === "tests" && (
             <div className="tests-panel">
               {!results ? (
-                <div className="tests-empty">
-                  <div className="tests-empty-icon">▶</div>
-                  <div>{problem.tests?.length > 0 ? `${problem.tests.length} teste salvate — apasă Submit` : "Apasă Submit — Gemini generează testele"}</div>
+                <div className="tests-panel-inner">
+                  {problem.tests?.length > 0 ? (
+                    <>
+                      <div className="tests-info">
+                        {problem.tests.length} teste salvate — apasă Submit pentru a evalua
+                      </div>
+                      {problem.tests.map((t,i) => (
+                        <div key={i} className="test-result neutral">
+                          <div className="test-result-header">
+                            <span className="test-status neutral">○ Test #{i+1}</span>
+                          </div>
+                          <div className="test-io">
+                            <div className="test-io-row">
+                              <span className="test-io-label">Input:</span>
+                              <pre className="test-io-val">{t.input}</pre>
+                            </div>
+                            <div className="test-io-row">
+                              <span className="test-io-label">Expected:</span>
+                              <div className="reveal-row">
+                                {revealedTests[`pre_${i}`] && <pre className="test-io-val">{t.expected}</pre>}
+                                <button
+                                  className={"reveal-btn" + (revealedTests[`pre_${i}`] ? " active" : "")}
+                                  onClick={()=>toggleRevealTest(`pre_${i}`)}
+                                  title={revealedTests[`pre_${i}`] ? "Ascunde expected" : "Arată expected output"}
+                                >
+                                  {revealedTests[`pre_${i}`] ? "🙈 ascunde" : "👁 arată"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="tests-empty">
+                      <div className="tests-empty-icon">▶</div>
+                      <div>Apasă Submit — testele se vor genera automat</div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="tests-list">
@@ -313,12 +386,27 @@ Da un HINT scurt (max 2 propozitii) care orienteaza studentul spre bug fara sa i
                         <span className={"test-status "+(r.passed?"pass":"fail")}>{r.passed?"✓":"✗"} Test #{i+1}</span>
                       </div>
                       <div className="test-io">
-                        {[["Input",r.input],["Expected",r.expected],["Got",r.actual]].map(([lbl,val])=>(
-                          <div key={lbl} className="test-io-row">
-                            <span className="test-io-label">{lbl}:</span>
-                            <pre className={"test-io-val"+(lbl==="Got"&&!r.passed?" wrong":"")}>{val}</pre>
+                        <div className="test-io-row">
+                          <span className="test-io-label">Input:</span>
+                          <pre className="test-io-val">{r.input}</pre>
+                        </div>
+                        <div className="test-io-row">
+                          <span className="test-io-label">Expected:</span>
+                          <div className="reveal-row">
+                            {revealedTests[i] && <pre className="test-io-val">{r.expected}</pre>}
+                            <button
+                              className={"reveal-btn" + (revealedTests[i] ? " active" : "")}
+                              onClick={()=>toggleRevealTest(i)}
+                              title={revealedTests[i] ? "Ascunde expected" : "Arată expected output"}
+                            >
+                              {revealedTests[i] ? "🙈 ascunde" : "👁 arată"}
+                            </button>
                           </div>
-                        ))}
+                        </div>
+                        <div className="test-io-row">
+                          <span className="test-io-label">Got:</span>
+                          <pre className={"test-io-val"+(r.passed?"":" wrong")}>{r.actual}</pre>
+                        </div>
                       </div>
                     </div>
                   ))}
